@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes mail-ring {
+  0%, 100% { transform: rotate(0deg); }
+  8%, 24%, 40% { transform: rotate(-10deg); }
+  16%, 32%, 48% { transform: rotate(10deg); }
+  56% { transform: rotate(0deg); }
+}
+
+.animate-mail-ring {
+  transform-origin: 50% 10%;
+  animation: mail-ring 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-mail-ring {
+    animation: none;
+  }
+}
+
+@layer components {
+  .church-dashboard-shell section.rounded-2xl,
+  .church-dashboard-shell article.rounded-2xl {
+    @apply transition-all duration-200 hover:-translate-y-1 hover:shadow-lg;
+  }
+}
+
+@layer base {
+  html.dark body {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  html.dark .church-dashboard-shell {
+    @apply bg-slate-950 text-slate-100;
+  }
+
+  html.dark [class~="bg-white"],
+  html.dark [class~="bg-white/80"],
+  html.dark [class~="bg-white/90"],
+  html.dark [class~="bg-[#f7f8fc]"],
+  html.dark [class~="bg-[#fbfbfe]"] {
+    background-color: #111827 !important;
+  }
+
+  html.dark [class~="bg-slate-50"],
+  html.dark [class~="bg-slate-100"],
+  html.dark [class~="bg-violet-50"],
+  html.dark [class~="bg-violet-100"],
+  html.dark [class~="bg-emerald-50"],
+  html.dark [class~="bg-emerald-100"],
+  html.dark [class~="bg-emerald-50/60"],
+  html.dark [class~="bg-pink-50"],
+  html.dark [class~="bg-pink-100"],
+  html.dark [class~="bg-sky-50"],
+  html.dark [class~="bg-sky-100"],
+  html.dark [class~="bg-amber-50"],
+  html.dark [class~="bg-amber-100"],
+  html.dark [class~="bg-orange-50"],
+  html.dark [class~="bg-violet-50/50"],
+  html.dark [class~="bg-red-50"] {
+    background-color: #1e293b !important;
+  }
+
+  html.dark [class~="border-slate-100"],
+  html.dark [class~="border-slate-200"],
+  html.dark [class~="border-slate-300"] {
+    border-color: #334155 !important;
+  }
+
+  html.dark [class~="text-slate-900"],
+  html.dark [class~="text-slate-950"],
+  html.dark [class~="text-slate-800"],
+  html.dark [class~="text-slate-700"] {
+    color: #e2e8f0 !important;
+  }
+
+  html.dark [class~="text-slate-600"],
+  html.dark [class~="text-slate-500"],
+  html.dark [class~="text-slate-400"],
+  html.dark [class~="text-violet-700"],
+  html.dark [class~="text-violet-800"],
+  html.dark [class~="text-violet-900"],
+  html.dark [class~="text-emerald-700"],
+  html.dark [class~="text-pink-700"],
+  html.dark [class~="text-sky-700"],
+  html.dark [class~="text-emerald-800"],
+  html.dark [class~="text-emerald-900"],
+  html.dark [class~="text-amber-100"],
+  html.dark [class~="text-pink-600"],
+  html.dark [class~="text-violet-600"],
+  html.dark [class~="text-amber-900"],
+  html.dark [class~="text-red-700"],
+  html.dark [class~="text-red-800"] {
+    color: #cbd5e1 !important;
+  }
+
+  html.dark .attendance-status-present {
+    background-color: #064e3b !important;
+    color: #d1fae5 !important;
+  }
+
+  html.dark .attendance-status-late {
+    background-color: #7c2d12 !important;
+    color: #ffedd5 !important;
+  }
+
+  html.dark .attendance-status-absent {
+    background-color: #7f1d1d !important;
+    color: #fee2e2 !important;
+  }
+
+  html.dark input:not([type="file"]),
+  html.dark select,
+  html.dark textarea {
+    border-color: #475569;
+    background-color: #0f172a;
+    color: #f1f5f9;
+  }
+
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #94a3b8;
+  }
+
+  html.dark table thead {
+    border-color: #334155;
+    color: #cbd5e1;
+  }
+
+  html.dark table tbody {
+    border-color: #334155;
+  }
+
+  html.dark .welcome-slideshow-image {
+    animation: welcome-slide-in 260ms ease-out both;
+  }
+
+  .church-dashboard-shell input:not([type="file"]),
+  .church-dashboard-shell select,
+  .church-dashboard-shell textarea {
+    min-height: 44px;
+  }
+
+  .church-dashboard-shell input[type="file"] {
+    min-height: 44px;
+  }
+
+  .church-dashboard-shell button {
+    min-width: 44px;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .church-dashboard-shell a[aria-label] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  @media (max-width: 639px) {
+    .church-dashboard-shell {
+      overflow-x: clip;
+    }
+
+    .church-dashboard-shell section,
+    .church-dashboard-shell article {
+      min-width: 0;
+      max-width: 100%;
+    }
+  }
+}
+
+@keyframes welcome-slide-in {
+  from {
+    opacity: 0.35;
+    transform: scale(1.015);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
