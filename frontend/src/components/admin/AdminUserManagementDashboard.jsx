@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiRequest, getErrorMessage } from '../../services/api';
+import { useToast } from '../../context/ToastContext';
 import ChurchDashboardShell from '../layout/ChurchDashboardShell';
 import AdminSlideshowManagement from './AdminSlideshowManagement';
+import FullLeaderboardsPage from '../attendance/FullLeaderboardsPage';
+import { getDesignations } from '../../utils/designations';
+import { useAuth } from '../../context/AuthContext';
 
 const ROLES = [
   { value: 'admin', label: 'Admin' },
@@ -9,17 +13,19 @@ const ROLES = [
   { value: 'member', label: 'Member' },
 ];
 const SECONDARY_DESIGNATIONS = [
-  'KSP leader',
+  'KSP Leader',
   'Youth Leader',
-  'Music Team Leader',
+  'Worship Leader',
   'Small Group Leader',
-  'Tech Team Leader',
-  'Creatives Leader',
+  'Audio Team Leader',
+  'Media Team Leader',
   'Admin Team Leader',
+  'Worship Team Member',
+  'Media Team Member',
 ];
 
 const inputClass =
-  'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100';
+  'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-emerald-900';
 const buttonClass =
   'inline-flex min-h-10 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -37,17 +43,17 @@ export default function AdminUserManagementDashboard({
   getIdToken,
   apiBaseUrl = '/api',
 }) {
+  const { showToast } = useToast();
+  const { user: currentUser, updateUserProfile } = useAuth();
   const [users, setUsers] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [designationMenuUserId, setDesignationMenuUserId] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setError('');
     try {
       const userResult = await apiRequest('/admin/users', { getIdToken, apiBaseUrl });
       const nextUsers = Array.isArray(userResult)
@@ -61,9 +67,7 @@ export default function AdminUserManagementDashboard({
               getUserId(user),
               {
                 role: getSystemRole(user),
-                secondaryDesignation:
-                  user.secondaryDesignation ||
-                  (user.role === 'life_coach' ? 'Life Coach' : ''),
+                secondaryDesignations: getDesignations(user),
                 birthDate: user.birthDate ? user.birthDate.slice(0, 10) : '',
               },
             ];
@@ -71,14 +75,19 @@ export default function AdminUserManagementDashboard({
         )
       );
     } catch (loadError) {
-      setError(getErrorMessage(loadError));
+      showToast(getErrorMessage(loadError), 'error');
     } finally {
       setLoading(false);
     }
-  }, [apiBaseUrl, getIdToken]);
+  }, [apiBaseUrl, getIdToken, showToast]);
 
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    window.addEventListener('tlbc:profile-updated', loadData);
+    return () => window.removeEventListener('tlbc:profile-updated', loadData);
   }, [loadData]);
 
   const visibleUsers = useMemo(() => {
@@ -96,7 +105,6 @@ export default function AdminUserManagementDashboard({
       ...current,
       [userId]: { ...current[userId], [key]: value },
     }));
-    setNotice('');
   }
 
   async function saveUser(user) {
@@ -104,8 +112,6 @@ export default function AdminUserManagementDashboard({
     const draft = drafts[userId];
     if (!draft) return;
     setSavingId(userId);
-    setError('');
-    setNotice('');
     try {
       const currentRole = getSystemRole(user);
 
@@ -118,17 +124,36 @@ export default function AdminUserManagementDashboard({
         });
       }
 
-      const currentDesignation =
-        user.secondaryDesignation ||
-        (user.role === 'life_coach' ? 'Life Coach' : '');
-      const nextDesignation =
-        draft.role === 'member' ? draft.secondaryDesignation || null : null;
-      if (nextDesignation !== currentDesignation) {
-        await apiRequest(`/admin/users/${userId}/secondary-designation`, {
+      const nextDesignations = ['member', 'admin'].includes(draft.role)
+        ? getDesignations(draft.secondaryDesignations)
+        : [];
+      const designationResult = await apiRequest(
+        `/admin/users/${userId}/secondary-designation`,
+        {
           getIdToken,
           apiBaseUrl,
           method: 'PATCH',
-          body: JSON.stringify({ secondaryDesignation: nextDesignation }),
+          body: JSON.stringify({ secondaryDesignations: nextDesignations }),
+        }
+      );
+      const updatedUser = designationResult.user;
+      setUsers((current) =>
+        current.map((item) =>
+          String(getUserId(item)) === String(userId)
+            ? {
+                ...item,
+                ...updatedUser,
+                role: updatedUser.role,
+                secondaryDesignations: updatedUser.secondaryDesignations,
+              }
+            : item
+        )
+      );
+      if (String(getUserId(currentUser || {})) === String(userId)) {
+        updateUserProfile({
+          ...currentUser,
+          ...updatedUser,
+          name: updatedUser.displayName,
         });
       }
 
@@ -142,10 +167,10 @@ export default function AdminUserManagementDashboard({
         });
       }
 
-      setNotice(`Updated ${user.displayName || user.email}.`);
+      showToast(`Updated ${user.displayName || user.email}.`, 'success');
       await loadData();
     } catch (saveError) {
-      setError(getErrorMessage(saveError));
+      showToast(getErrorMessage(saveError), 'error');
     } finally {
       setSavingId('');
     }
@@ -153,17 +178,17 @@ export default function AdminUserManagementDashboard({
 
   return (
     <ChurchDashboardShell getIdToken={getIdToken} apiBaseUrl={apiBaseUrl}>
-    <div className="min-h-screen px-4 py-8 text-slate-900 sm:px-6 lg:px-10">
+    <div className="min-h-screen px-4 py-8 text-slate-900 dark:bg-slate-950 dark:text-slate-100 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl">
         <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700">
+            <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
               The Life Builder Church
             </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">
+            <h1 id="user-management" className="mt-2 scroll-mt-6 text-3xl font-bold tracking-tight sm:text-4xl">
               User management
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
               Assign system roles and member designations.
             </p>
           </div>
@@ -172,22 +197,11 @@ export default function AdminUserManagementDashboard({
           </button>
         </header>
 
-        {error && (
-          <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {error}
-          </div>
-        )}
-        {notice && (
-          <div role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-            {notice}
-          </div>
-        )}
-
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-col gap-3 border-b border-slate-200 p-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div>
               <h2 className="text-lg font-bold">Registered accounts</h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {users.length} account{users.length === 1 ? '' : 's'}
               </p>
             </div>
@@ -207,25 +221,38 @@ export default function AdminUserManagementDashboard({
           ) : visibleUsers.length === 0 ? (
             <p className="p-8 text-center text-sm text-slate-500">No accounts found.</p>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {visibleUsers.map((user) => {
                 const userId = getUserId(user);
                 const draft = drafts[userId] || {};
-                const isMember = draft.role === 'member';
+                const canAssignDesignations = ['member', 'admin'].includes(draft.role);
                 return (
                   <article
-                    className="grid min-w-0 grid-cols-1 gap-4 p-4 sm:p-6 md:grid-cols-2 xl:grid-cols-[minmax(9.5rem,1.4fr)_minmax(8rem,.9fr)_minmax(9rem,1.2fr)_minmax(7.5rem,.9fr)_auto] xl:items-end xl:gap-2.5 xl:p-3"
+                    className={`relative grid min-w-0 grid-cols-1 gap-4 p-4 sm:p-6 md:grid-cols-2 xl:grid-cols-[minmax(9.5rem,1.4fr)_minmax(8rem,.9fr)_minmax(9rem,1.2fr)_minmax(7.5rem,.9fr)_auto] xl:items-end xl:gap-2.5 xl:p-3 ${designationMenuUserId === userId ? 'z-30' : ''}`}
                     key={userId}
                   >
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">{user.displayName || 'Unnamed account'}</p>
-                      <p className="mt-1 truncate text-sm text-slate-500">{user.email}</p>
-                      {user.phoneNumber && (
-                        <p className="mt-1 text-xs text-slate-500">{user.phoneNumber}</p>
+                    <div className="flex min-w-0 items-center gap-3">
+                      {user.profilePicture || user.profilePhoto?.url ? (
+                        <img
+                          src={user.profilePicture || user.profilePhoto.url}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100">
+                          {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
+                        </span>
                       )}
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{user.displayName || 'Unnamed account'}</p>
+                        <p className="mt-1 truncate text-sm text-slate-500">{user.email}</p>
+                        {user.phoneNumber && (
+                          <p className="mt-1 text-xs text-slate-500">{user.phoneNumber}</p>
+                        )}
+                      </div>
                     </div>
 
-                    <label className="text-xs font-semibold text-slate-600">
+                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                       System role
                       <select
                         className={inputClass}
@@ -238,30 +265,71 @@ export default function AdminUserManagementDashboard({
                       </select>
                     </label>
 
-                    <label className="text-xs font-semibold text-slate-600">
-                      Secondary designation
-                      <select
-                        className={inputClass}
-                        value={draft.secondaryDesignation || ''}
-                        disabled={!isMember}
-                        onChange={(event) =>
-                          updateDraft(userId, 'secondaryDesignation', event.target.value)
+                    <fieldset
+                      disabled={!canAssignDesignations}
+                      className="min-w-0 text-xs font-semibold text-slate-600 disabled:opacity-60 dark:text-slate-300"
+                    >
+                      <legend>Secondary designations</legend>
+                      <details
+                        className="designation-dropdown group relative mt-1"
+                        onToggle={(event) =>
+                          setDesignationMenuUserId(
+                            event.currentTarget.open ? userId : ''
+                          )
                         }
                       >
-                        <option value="">None</option>
-                        {draft.secondaryDesignation &&
-                          !SECONDARY_DESIGNATIONS.includes(draft.secondaryDesignation) && (
-                            <option value={draft.secondaryDesignation}>
-                              {draft.secondaryDesignation} (legacy)
-                            </option>
+                        <summary className={`${inputClass} flex min-h-10 cursor-pointer list-none items-center justify-between`}>
+                          <span className="truncate">
+                            {draft.secondaryDesignations?.length
+                              ? `${draft.secondaryDesignations.length} selected`
+                              : 'None assigned'}
+                          </span>
+                          <span aria-hidden="true">⌄</span>
+                        </summary>
+                        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 text-slate-900 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                          {[
+                            ...SECONDARY_DESIGNATIONS,
+                            ...(draft.secondaryDesignations || []).filter(
+                              (designation) =>
+                                !SECONDARY_DESIGNATIONS.includes(designation)
+                            ),
+                          ].map((designation) => (
+                            <label
+                              key={designation}
+                              className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg px-2 text-xs hover:bg-emerald-50 dark:hover:bg-slate-800"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={(draft.secondaryDesignations || []).includes(designation)}
+                                onChange={(event) => {
+                                  const current = draft.secondaryDesignations || [];
+                                  updateDraft(
+                                    userId,
+                                    'secondaryDesignations',
+                                    event.target.checked
+                                      ? [...current, designation]
+                                      : current.filter((value) => value !== designation)
+                                  );
+                                }}
+                                className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
+                              />
+                              <span>{designation}{!SECONDARY_DESIGNATIONS.includes(designation) ? ' (legacy)' : ''}</span>
+                            </label>
+                          ))}
+                          {(draft.secondaryDesignations || []).length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => updateDraft(userId, 'secondaryDesignations', [])}
+                              className="mt-1 min-h-9 w-full rounded-lg px-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950"
+                            >
+                              Clear all
+                            </button>
                           )}
-                        {SECONDARY_DESIGNATIONS.map((designation) => (
-                          <option key={designation} value={designation}>{designation}</option>
-                        ))}
-                      </select>
-                    </label>
+                        </div>
+                      </details>
+                    </fieldset>
 
-                    <label className="text-xs font-semibold text-slate-600">
+                    <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                       Birthday
                       <input
                         type="date"
@@ -286,8 +354,13 @@ export default function AdminUserManagementDashboard({
             </div>
           )}
         </section>
-        <p className="mt-4 text-xs leading-5 text-slate-500">
-          Leaders can view their assigned group roster and upload ministry media. Life Coach designation also grants attendance scanner access.
+        <FullLeaderboardsPage
+          getIdToken={getIdToken}
+          apiBaseUrl={apiBaseUrl}
+          embedded
+        />
+        <p className="mt-4 text-xs leading-5 text-slate-500 dark:text-slate-400">
+          Leaders can view their assigned group roster and upload ministry media. Attendance QR scanning is reserved for Admins.
         </p>
         <AdminSlideshowManagement getIdToken={getIdToken} apiBaseUrl={apiBaseUrl} />
       </div>

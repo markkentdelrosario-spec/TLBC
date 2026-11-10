@@ -1,18 +1,6 @@
 const mongoose = require('mongoose');
 
-const secondaryDesignations = [
-  'KSP leader',
-  'Youth Leader',
-  'Music Team Leader',
-  'Small Group Leader',
-  'Tech Team Leader',
-  'Creatives Leader',
-  'Admin Team Leader',
-  // Retained for existing members whose scanner access depends on this designation.
-  'Life Coach',
-  'Worship Ministry Member',
-  'Media Team Member',
-];
+const { SECONDARY_DESIGNATIONS } = require('../utils/designations');
 
 const profilePhotoSchema = new mongoose.Schema(
   {
@@ -26,10 +14,10 @@ const userSchema = new mongoose.Schema(
   {
     firebaseUid: {
       type: String,
-      required: true,
       unique: true,
       immutable: true,
       trim: true,
+      sparse: true,
     },
     email: {
       type: String,
@@ -39,16 +27,21 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
     displayName: { type: String, required: true, trim: true, maxlength: 120 },
+    passwordHash: { type: String, select: false },
+    otp: { type: String, select: false },
+    otpExpires: { type: Date, default: null, select: false },
+    otpAttempts: { type: Number, default: 0, min: 0, select: false },
+    otpLastSentAt: { type: Date, default: null, select: false },
+    isVerified: { type: Boolean, default: false },
     phoneNumber: { type: String, trim: true, maxlength: 32 },
     role: {
       type: String,
       required: true,
       enum: ['admin', 'pastor', 'member'],
     },
-    secondaryDesignation: {
-      type: String,
-      enum: secondaryDesignations,
-      default: null,
+    secondaryDesignations: {
+      type: [{ type: String, enum: SECONDARY_DESIGNATIONS }],
+      default: [],
     },
     birthDate: { type: Date, default: null },
     profilePhoto: { type: profilePhotoSchema, default: undefined },

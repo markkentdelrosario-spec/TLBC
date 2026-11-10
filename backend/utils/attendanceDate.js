@@ -15,6 +15,12 @@ function getChurchAttendanceDate(date = new Date()) {
   );
 }
 
+function getChurchAttendanceSundayDate(date = new Date()) {
+  const sunday = getChurchAttendanceDate(date);
+  sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
+  return sunday;
+}
+
 function parseDate(value, fieldName) {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -43,4 +49,8 @@ function buildAttendanceDateMatch(startDate, endDate) {
   return match;
 }
 
-module.exports = { buildAttendanceDateMatch, getChurchAttendanceDate };
+module.exports = {
+  buildAttendanceDateMatch,
+  getChurchAttendanceDate,
+  getChurchAttendanceSundayDate,
+};

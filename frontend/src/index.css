@@ -25,9 +25,43 @@
   .church-dashboard-shell article.rounded-2xl {
     @apply transition-all duration-200 hover:-translate-y-1 hover:shadow-lg;
   }
+
+  .designation-dropdown > div {
+    display: block;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transform: translateY(-0.5rem);
+    transition: max-height 300ms ease-in-out, opacity 300ms ease-in-out, transform 300ms ease-in-out;
+  }
+
+  .designation-dropdown[open] > div {
+    max-height: 16rem;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .designation-dropdown > div {
+      transition: none;
+    }
+  }
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 1rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
   html.dark body {
     @apply bg-slate-950 text-slate-100;
   }
@@ -133,10 +167,6 @@
     border-color: #334155;
   }
 
-  html.dark .welcome-slideshow-image {
-    animation: welcome-slide-in 260ms ease-out both;
-  }
-
   .church-dashboard-shell input:not([type="file"]),
   .church-dashboard-shell select,
   .church-dashboard-shell textarea {
@@ -167,6 +197,25 @@
       min-width: 0;
       max-width: 100%;
     }
+  }
+}
+
+@keyframes dashboard-slide-fade {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.welcome-slideshow-image {
+  animation: dashboard-slide-fade 350ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-slideshow-image {
+    animation: none;
   }
 }
 

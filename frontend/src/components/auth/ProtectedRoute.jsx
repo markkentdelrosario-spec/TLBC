@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { getRoleHomePath, useAuth } from '../../context/AuthContext';
+import { getDesignations, hasDesignation } from '../../utils/designations';
 
 const roleNavigation = {
-  admin: [{ to: '/admin', label: 'User management' }],
   pastor: [{ to: '/pastor', label: 'Pastor dashboard' }],
   member: [{ to: '/profile', label: 'Member dashboard' }],
 };
@@ -11,6 +11,8 @@ const roleNavigation = {
 export default function ProtectedRoute({
   allowedRoles,
   requiredDesignation,
+  requiredDesignations,
+  requireSecondaryDesignation = false,
   children,
 }) {
   const { user, loading, logout } = useAuth();
@@ -32,19 +34,21 @@ export default function ProtectedRoute({
     return <Navigate to={getRoleHomePath(user.role)} replace />;
   }
   if (
-    requiredDesignation &&
-    user.secondaryDesignation !== requiredDesignation
+    (requiredDesignation && !hasDesignation(user, requiredDesignation)) ||
+    (requiredDesignations?.length &&
+      !requiredDesignations.some((designation) => hasDesignation(user, designation)))
+  ) {
+    return <Navigate to={getRoleHomePath(user.role)} replace />;
+  }
+  if (
+    requireSecondaryDesignation &&
+    user.role === 'member' &&
+    getDesignations(user).length === 0
   ) {
     return <Navigate to={getRoleHomePath(user.role)} replace />;
   }
 
   const links = [...(roleNavigation[user.role] || [])];
-  if (
-    user.role === 'member' &&
-    user.secondaryDesignation === 'Life Coach'
-  ) {
-    links.push({ to: '/scanner', label: 'Attendance scanner' });
-  }
   return (
     <div className="min-h-screen">
       <header className="relative z-20 border-b border-slate-200 bg-white">
@@ -108,11 +112,16 @@ export default function ProtectedRoute({
             )}
           </div>
         </div>
-        {menuOpen && (
-          <nav
-            className="absolute left-0 right-0 top-full border-b border-slate-200 bg-white p-3 shadow-lg sm:hidden"
-            aria-label="Mobile navigation"
-          >
+        <nav
+          aria-label="Mobile navigation"
+          aria-hidden={!menuOpen}
+          inert={!menuOpen}
+          className={`absolute left-0 right-0 top-full overflow-hidden border-b border-slate-200 bg-white shadow-lg transition-all duration-300 ease-in-out motion-reduce:transition-none sm:hidden ${
+            menuOpen
+              ? 'max-h-[80vh] translate-y-0 p-3 opacity-100'
+              : 'pointer-events-none max-h-0 -translate-y-2 p-0 opacity-0'
+          }`}
+        >
             <div className="mx-auto flex max-w-7xl flex-col gap-1">
               {links.map((link) => (
                 <Link
@@ -134,8 +143,7 @@ export default function ProtectedRoute({
                 </button>
               )}
             </div>
-          </nav>
-        )}
+        </nav>
       </header>
       {children || <Outlet />}
     </div>

@@ -1,10 +1,11 @@
 const { getAuth } = require('firebase-admin/auth');
 const firebaseApp = require('../config/firebaseAdmin');
 const User = require('../models/User');
+const { getDesignations, hasDesignation } = require('../utils/designations');
 
 const SYSTEM_ROLES = new Set(['admin', 'pastor', 'member']);
 const LEGACY_MEMBER_ROLES = new Set(['life_coach', 'beneficiary']);
-const SCANNER_DESIGNATION = 'Life Coach';
+const SCANNER_DESIGNATION = 'KSP Leader';
 
 async function verifyFirebaseToken(req) {
   const authorization = req.get('authorization') || '';
@@ -64,17 +65,26 @@ async function authenticate(req, res, next) {
 
   try {
     const user = await User.findOne({ firebaseUid: decodedToken.uid });
-    if (!user || !user.isActive) {
+    if (!user || !user.isVerified) {
+      return res.status(403).json({
+        message: 'Verify your email address before activating your account.',
+      });
+    }
+    if (!user.isActive) {
       return res.status(403).json({ message: 'This account is not authorized.' });
     }
 
     if (LEGACY_MEMBER_ROLES.has(user.role)) {
       if (user.role === 'life_coach') {
-        user.secondaryDesignation = SCANNER_DESIGNATION;
+        user.secondaryDesignations = [SCANNER_DESIGNATION];
       } else {
-        user.secondaryDesignation = null;
+        user.secondaryDesignations = [];
       }
       user.role = 'member';
+      await user.save();
+    }
+    if (!Array.isArray(user.secondaryDesignations)) {
+      user.secondaryDesignations = getDesignations(user);
       await user.save();
     }
     if (!SYSTEM_ROLES.has(user.role)) {
@@ -110,36 +120,27 @@ function authorizeRoles(...allowedRoles) {
 }
 
 function authorizeLifeCoachScanner(req, res, next) {
-  if (
-    req.user?.role === 'admin' ||
-    (req.user?.role === 'member' &&
-      req.user.secondaryDesignation === SCANNER_DESIGNATION)
-  ) {
+  if (req.user?.role === 'admin') {
     return next();
   }
   return res
     .status(403)
-    .json({ message: 'Life Coach designation is required to use the scanner.' });
+    .json({ message: 'Only administrators can use attendance QR scanning.' });
 }
 
 function authorizeReportAccess(req, res, next) {
-  if (
-    req.user?.role === 'admin' ||
-    (req.user?.role === 'member' && Boolean(req.user.secondaryDesignation))
-  ) {
-    return next();
-  }
+  if (req.user?.role === 'admin') return next();
   return res.status(403).json({
-    message: 'Reports are available to admins and members with a secondary designation.',
+    message: 'Reports are available to administrators only.',
   });
 }
 
 function authorizeAttendanceMonitoring(req, res, next) {
-  const designation = req.user?.secondaryDesignation?.trim().toLowerCase();
   if (
     req.user?.role === 'admin' ||
     (req.user?.role === 'member' &&
-      [SCANNER_DESIGNATION.toLowerCase(), 'ksp leader'].includes(designation))
+      (hasDesignation(req.user, SCANNER_DESIGNATION) ||
+        hasDesignation(req.user, 'KSP Leader')))
   ) {
     return next();
   }
@@ -149,8 +150,10 @@ function authorizeAttendanceMonitoring(req, res, next) {
 }
 
 function authorizeAttendanceStatusManagement(req, res, next) {
-  const designation = req.user?.secondaryDesignation?.trim().toLowerCase();
-  if (req.user?.role === 'admin' || (req.user?.role === 'member' && designation === 'ksp leader')) {
+  if (
+    req.user?.role === 'admin' ||
+    (req.user?.role === 'member' && hasDesignation(req.user, 'KSP Leader'))
+  ) {
     return next();
   }
   return res.status(403).json({

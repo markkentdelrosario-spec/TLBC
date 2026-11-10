@@ -5,6 +5,7 @@ const path = require('node:path');
 const { authenticate } = require('../middleware/authMiddleware');
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const MinistryMedia = require('../models/MinistryMedia');
+const { getDesignations } = require('../utils/designations');
 
 const router = express.Router();
 const uploadFolders = new Set([
@@ -146,7 +147,7 @@ router.get('/ministry-media', authenticate, async (req, res, next) => {
 });
 
 router.post('/ministry-media', authenticate, (req, res, next) => {
-  if (req.user.role !== 'member' || !req.user.secondaryDesignation) {
+  if (req.user.role !== 'member' || getDesignations(req.user).length === 0) {
     return res.status(403).json({
       message: 'A secondary designation is required to upload ministry media.',
     });

@@ -1,11 +1,12 @@
 const express = require('express');
 const { authenticate } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
+const { getDesignations } = require('../utils/designations');
 
 const router = express.Router();
 
 router.get('/my-group', authenticate, async (req, res, next) => {
-  if (req.user.role !== 'member' || !req.user.secondaryDesignation) {
+  if (req.user.role !== 'member' || getDesignations(req.user).length === 0) {
     return res.status(403).json({
       message: 'A secondary designation is required for group leadership tools.',
     });
@@ -27,7 +28,7 @@ router.get('/my-group', authenticate, async (req, res, next) => {
       group: memberProfile.group._id,
       isActive: true,
     })
-      .populate('user', 'displayName secondaryDesignation profilePicture isActive')
+      .populate('user', 'displayName secondaryDesignations profilePicture isActive')
       .sort({ createdAt: 1 })
       .lean();
     return res.json({
@@ -37,7 +38,8 @@ router.get('/my-group', authenticate, async (req, res, next) => {
         .map((member) => ({
           id: member.user._id,
           name: member.user.displayName,
-          secondaryDesignation: member.user.secondaryDesignation || null,
+          secondaryDesignations: member.user.secondaryDesignations || [],
+          secondaryDesignation: member.user.secondaryDesignations || [],
           profilePicture: member.user.profilePicture || null,
         })),
     });

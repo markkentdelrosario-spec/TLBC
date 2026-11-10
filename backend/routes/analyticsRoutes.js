@@ -2,6 +2,7 @@ const express = require('express');
 const {
   authenticate,
   authorizeReportAccess,
+  authorizeRoles,
 } = require('../middleware/authMiddleware');
 const AttendanceLog = require('../models/AttendanceLog');
 const Beneficiary = require('../models/Beneficiary');
@@ -11,9 +12,11 @@ const {
   buildAttendanceDateMatch,
   getChurchAttendanceDate,
 } = require('../utils/attendanceDate');
+const { getDesignations } = require('../utils/designations');
 
 const router = express.Router();
 const reportAccess = [authenticate, authorizeReportAccess];
+const leaderboardAccess = [authenticate, authorizeRoles('admin', 'member')];
 
 function getDateMatch(req, res) {
   try {
@@ -161,10 +164,10 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
           select: 'user',
           populate: {
             path: 'user',
-            select: 'displayName secondaryDesignation',
+            select: 'displayName secondaryDesignations',
           },
         })
-        .populate('user', 'displayName secondaryDesignation')
+        .populate('user', 'displayName secondaryDesignations')
         .populate('group', 'groupNumber name')
         .sort({ checkedInAt: 1 })
         .lean(),
@@ -189,7 +192,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
       if (![1, 2, 3].includes(groupNumber)) {
         unassignedAttendees.push({
           beneficiaryName: attendeeUser?.displayName || 'Unknown member',
-          designation: attendeeUser?.secondaryDesignation || 'Member',
+          designation: getDesignations(attendeeUser).join(', ') || 'Member',
           checkedInAt: log.checkedInAt,
           checkedInAtFormatted: formatCheckInTime(log.checkedInAt, timeZone),
           serviceName: log.serviceName,
@@ -209,7 +212,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
       group.attendanceCount += 1;
       group.attendees.push({
         beneficiaryName: attendeeUser?.displayName || 'Unknown member',
-        designation: attendeeUser?.secondaryDesignation || 'Member',
+        designation: getDesignations(attendeeUser).join(', ') || 'Member',
         checkedInAt: log.checkedInAt,
         checkedInAtFormatted: formatCheckInTime(
           log.checkedInAt,
@@ -254,7 +257,7 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
   try {
     const [members, logs] = await Promise.all([
       User.find({ role: 'member', isActive: true })
-        .select('displayName secondaryDesignation')
+        .select('displayName secondaryDesignations')
         .sort({ displayName: 1 })
         .lean(),
       AttendanceLog.find({
@@ -288,7 +291,6 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
       date.setUTCDate(date.getUTCDate() + 1)
     ) {
       if (date.getUTCDay() !== 0) continue;
-      if (date > today) continue;
       const dateString = date.toISOString().slice(0, 10);
       sundayDates.push(dateString);
       const statuses = statusesByDateAndMember.get(dateString) || new Map();
@@ -297,15 +299,18 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
           date: dateString,
           memberId: String(member._id),
           memberName: member.displayName,
-          secondaryDesignation: member.secondaryDesignation || '',
-          status: statuses.get(String(member._id)) || 'absent',
+          secondaryDesignation: getDesignations(member).join(', '),
+          status: statuses.get(String(member._id)) ||
+            (date > today ? 'upcoming' : 'absent'),
         });
       }
     }
 
     return res.json({
       month: req.query.month,
-      totalAttendance: rows.filter((row) => row.status !== 'absent').length,
+      totalAttendance: rows.filter((row) =>
+        ['present', 'late'].includes(row.status)
+      ).length,
       sundayDates,
       rows,
     });
@@ -314,7 +319,7 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
   }
 });
 
-router.get('/leaderboard', ...reportAccess, async (req, res, next) => {
+router.get('/leaderboard', ...leaderboardAccess, async (req, res, next) => {
   try {
     const members = await AttendanceLog.aggregate([
       {
@@ -358,9 +363,29 @@ router.get('/leaderboard', ...reportAccess, async (req, res, next) => {
         },
       },
       { $sort: { presentCount: -1, memberName: 1 } },
-      { $limit: 10 },
     ]);
-    return res.json({ members });
+    const rankedIds = new Set(members.map((member) => String(member.memberId)));
+    const zeroAttendanceMembers = await User.find({
+      role: 'member',
+      isActive: true,
+      _id: { $nin: [...rankedIds] },
+    })
+      .select('_id displayName')
+      .lean();
+    return res.json({
+      members: [
+        ...members,
+        ...zeroAttendanceMembers.map((member) => ({
+          memberId: member._id,
+          memberName: member.displayName,
+          presentCount: 0,
+        })),
+      ].sort(
+        (left, right) =>
+          right.presentCount - left.presentCount ||
+          left.memberName.localeCompare(right.memberName)
+      ),
+    });
   } catch (error) {
     return next(error);
   }

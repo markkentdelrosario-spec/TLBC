@@ -9,6 +9,7 @@
     "seed:admin": "node scripts/seedEmulatorAdmin.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cloudinary": "^2.11.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

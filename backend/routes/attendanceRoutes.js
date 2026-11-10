@@ -10,9 +10,19 @@ const AttendanceLog = require('../models/AttendanceLog');
 const Beneficiary = require('../models/Beneficiary');
 const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
-const { getChurchAttendanceDate } = require('../utils/attendanceDate');
+const {
+  getChurchAttendanceDate,
+  getChurchAttendanceSundayDate,
+} = require('../utils/attendanceDate');
+const { createNotification } = require('../services/notifications');
+const { emitToAll } = require('../realtime/realtime');
 
 const router = express.Router();
+const sundayAttendanceMessages = {
+  present: 'So glad you were with us this Sunday! Thank you for worshipping with us.',
+  late: 'Glad you made it this Sunday! Hope to see you a little earlier next time.',
+  absent: 'We missed you this Sunday! Praying for you and hoping to see you next week.',
+};
 const canCheckIn = [authenticate, authorizeLifeCoachScanner];
 const canViewGroupAttendance = [authenticate, authorizeAttendanceMonitoring];
 const canManageAttendanceStatus = [authenticate, authorizeAttendanceStatusManagement];
@@ -105,7 +115,7 @@ router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) =
     const today = getChurchAttendanceDate();
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const roster = await Beneficiary.find({ group: group._id, isActive: true })
-      .populate('user', 'displayName email phoneNumber isActive secondaryDesignation')
+      .populate('user', 'displayName email phoneNumber isActive secondaryDesignations')
       .sort({ createdAt: 1 })
       .lean();
     const activeRoster = roster.filter((beneficiary) => beneficiary.user?.isActive);
@@ -117,13 +127,13 @@ router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) =
           { beneficiary: { $in: activeRoster.map((beneficiary) => beneficiary._id) } },
         ],
       })
-        .populate('user', 'displayName secondaryDesignation')
+        .populate('user', 'displayName secondaryDesignations')
         .populate({
           path: 'beneficiary',
           select: 'user',
           populate: {
             path: 'user',
-            select: 'displayName secondaryDesignation',
+            select: 'displayName secondaryDesignations',
           },
         })
         .populate('scannedBy', 'displayName')
@@ -144,7 +154,8 @@ router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) =
         userId: beneficiary.user._id,
         beneficiaryId: beneficiary._id,
         name: beneficiary.user.displayName || 'Unnamed member',
-        secondaryDesignation: beneficiary.user.secondaryDesignation || null,
+        secondaryDesignations: beneficiary.user.secondaryDesignations || [],
+        secondaryDesignation: beneficiary.user.secondaryDesignations || [],
         status: log?.status || 'absent',
         checkedInAt: log?.checkedInAt || null,
         serviceName: log?.serviceName || null,
@@ -166,8 +177,10 @@ router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) =
         id: log._id,
         beneficiaryName:
           log.user?.displayName || log.beneficiary?.user?.displayName || 'Unknown beneficiary',
+        secondaryDesignations:
+          log.user?.secondaryDesignations || log.beneficiary?.user?.secondaryDesignations || [],
         secondaryDesignation:
-          log.user?.secondaryDesignation || log.beneficiary?.user?.secondaryDesignation || null,
+          log.user?.secondaryDesignations || log.beneficiary?.user?.secondaryDesignations || [],
         status: log.status || 'present',
         checkedInAt: log.checkedInAt,
         serviceName: log.serviceName,
@@ -216,7 +229,7 @@ router.patch('/status/:userId', ...canManageAttendanceStatus, async (req, res, n
     if (!group) return res.status(404).json({ message: 'Active group not found.' });
 
     const [targetUser, beneficiary] = await Promise.all([
-      User.findOne({ _id: userId, role: 'member', isActive: true }).select('_id'),
+      User.findOne({ _id: userId, role: 'member', isActive: true }).select('_id displayName'),
       Beneficiary.findOne({ user: userId, group: group._id, isActive: true }).select('_id'),
     ]);
     if (!targetUser || !beneficiary) {
@@ -243,6 +256,7 @@ router.patch('/status/:userId', ...canManageAttendanceStatus, async (req, res, n
         method: 'manual',
       });
     }
+    const previousStatus = attendanceLog.isNew ? null : attendanceLog.status;
     attendanceLog.status = rawStatus;
     attendanceLog.statusUpdatedAt = now;
     attendanceLog.serviceName = serviceName;
@@ -250,6 +264,19 @@ router.patch('/status/:userId', ...canManageAttendanceStatus, async (req, res, n
     if (!attendanceLog.beneficiary) attendanceLog.beneficiary = beneficiary._id;
     if (!attendanceLog.user) attendanceLog.user = targetUser._id;
     await attendanceLog.save();
+    if (
+      attendanceDate.getUTCDay() === 0 &&
+      previousStatus !== rawStatus
+    ) {
+      await createNotification({
+        userId: targetUser._id,
+        type: 'attendance_status',
+        scope: 'attendance',
+        title: `Sunday attendance: ${rawStatus}`,
+        message: sundayAttendanceMessages[rawStatus],
+        entityId: attendanceLog._id,
+      });
+    }
 
     return res.json({
       message: `Attendance status updated to ${rawStatus}.`,
@@ -366,7 +393,7 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
         _id: beneficiaryId,
         isActive: true,
       })
-        .populate('user', 'displayName email isActive role secondaryDesignation')
+        .populate('user', 'displayName email isActive role secondaryDesignations')
         .populate('group', 'groupNumber name isActive');
       targetUser = beneficiary?.user;
     } else if (scannedUserId) {
@@ -382,7 +409,7 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
         qrCodeId: qrToken,
         isActive: true,
       })
-        .populate('user', 'displayName email isActive role secondaryDesignation')
+        .populate('user', 'displayName email isActive role secondaryDesignations')
         .populate('group', 'groupNumber name isActive');
       targetUser = beneficiary?.user;
     }
@@ -401,7 +428,7 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
     }
 
     const checkedInAt = new Date();
-    const attendanceDate = getChurchAttendanceDate(checkedInAt);
+    const attendanceDate = getChurchAttendanceSundayDate(checkedInAt);
     const duplicateQuery = {
       attendanceDate,
       $or: [{ user: targetUser._id }],
@@ -427,6 +454,22 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
     attendanceLog.status = 'present';
     attendanceLog.statusUpdatedAt = checkedInAt;
     await attendanceLog.save();
+    emitToAll('attendance:recorded', {
+      attendanceDate: attendanceDate.toISOString().slice(0, 10),
+      userId: String(targetUser._id),
+      groupId: beneficiary?.group?._id ? String(beneficiary.group._id) : null,
+      status: attendanceLog.status,
+    });
+    if (attendanceDate.getUTCDay() === 0) {
+      await createNotification({
+        userId: targetUser._id,
+        type: 'attendance_status',
+        scope: 'attendance',
+        title: 'Sunday attendance: present',
+        message: sundayAttendanceMessages.present,
+        entityId: attendanceLog._id,
+      });
+    }
 
     return res.status(201).json({
       message: 'Attendance recorded.',

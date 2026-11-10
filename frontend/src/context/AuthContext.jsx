@@ -11,6 +11,7 @@ import {
   FacebookAuthProvider,
   GoogleAuthProvider,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithCustomToken,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -58,8 +59,15 @@ export function AuthProvider({ children }) {
       apiBaseUrl,
     });
     setUser(profile);
+    window.dispatchEvent(new CustomEvent('tlbc:profile-updated', { detail: profile }));
     return profile;
   }, [firebaseUser]);
+  const updateUserProfile = useCallback((updates) => {
+    setUser((current) => (current ? { ...current, ...updates } : current));
+    window.dispatchEvent(
+      new CustomEvent('tlbc:profile-updated', { detail: updates })
+    );
+  }, []);
 
   const syncProfile = useCallback(async (signedInUser) => {
     const pending = profileRequests.current.get(signedInUser.uid);
@@ -145,6 +153,11 @@ export function AuthProvider({ children }) {
     [finishSignIn]
   );
 
+  const resetPassword = useCallback(async (email) => {
+    if (!auth) throw firebaseSetupError();
+    await sendPasswordResetEmail(auth, email);
+  }, []);
+
   const finishCustomTokenSignIn = useCallback(
     async (customToken) => {
       if (!auth) throw firebaseSetupError();
@@ -182,7 +195,9 @@ export function AuthProvider({ children }) {
       authError,
       getIdToken: firebaseUser ? getIdToken : null,
       refreshProfile,
+      updateUserProfile,
       loginWithEmail,
+      resetPassword,
       finishCustomTokenSignIn,
       loginWithGoogle,
       loginWithFacebook,
@@ -199,6 +214,8 @@ export function AuthProvider({ children }) {
       loginWithGoogle,
       logout,
       refreshProfile,
+      resetPassword,
+      updateUserProfile,
       user,
     ]
   );

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { apiRequest, getErrorMessage } from '../../services/api';
+import { getDesignations, hasDesignation } from '../../utils/designations';
+import { LOCAL_WELCOME_SLIDES } from '../../utils/localSlideshow';
 import {
   hasRegisteredPushToken,
   listenForPushMessages,
@@ -18,6 +21,7 @@ import AttendanceMonitoringPanel from '../attendance/AttendanceMonitoringPanel';
 const BIBLE_TRANSLATIONS = [
   ['web', 'World English Bible (WEB)'],
   ['kjv', 'King James Version (KJV)'],
+  ['nkjv', 'New King James Version (NKJV)'],
   ['asv', 'American Standard Version (ASV)'],
   ['bbe', 'Bible in Basic English (BBE)'],
   ['darby', 'Darby Bible'],
@@ -53,6 +57,65 @@ const navItems = [
   { label: 'Groups', href: '#groups', icon: '♧' },
 ];
 
+let nkjvBibleRequest;
+
+async function fetchNkjvReference(reference) {
+  const apiKey = import.meta.env.VITE_API_BIBLE_KEY;
+  if (!apiKey) {
+    throw new Error('NKJV requires an API.Bible key. Configure VITE_API_BIBLE_KEY and enable NKJV for the key.');
+  }
+  const request = async (path) => {
+    const response = await fetch(`https://api.scripture.api.bible/v1${path}`, {
+      headers: { 'api-key': apiKey },
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.error) {
+      throw new Error(payload.message || payload.error || 'The NKJV Bible service is unavailable.');
+    }
+    return payload.data;
+  };
+  if (!nkjvBibleRequest) {
+    nkjvBibleRequest = request('/bibles?language=eng&abbreviation=NKJV')
+      .then((data) => {
+        const bible = data?.find((item) =>
+          item.abbreviation?.toUpperCase() === 'NKJV' ||
+          item.name?.toUpperCase().includes('NKJV')
+        );
+        if (!bible) throw new Error('The configured API.Bible key does not have access to NKJV.');
+        return bible;
+      })
+      .catch((error) => {
+        nkjvBibleRequest = null;
+        throw error;
+      });
+  }
+  const bible = await nkjvBibleRequest;
+  const match = reference.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
+  if (!match) {
+    throw new Error('Enter a Bible reference such as John 3, John 3:16, or John 3:16-18.');
+  }
+  const [, bookName, chapter, firstVerse, lastVerse] = match;
+  const books = await request(`/bibles/${encodeURIComponent(bible.id)}/books`);
+  const book = books?.find((item) =>
+    item.name?.toLowerCase() === bookName.toLowerCase() ||
+    item.abbreviation?.toLowerCase() === bookName.toLowerCase()
+  );
+  if (!book) throw new Error(`The NKJV book "${bookName}" was not found.`);
+  const start = `${book.id}.${chapter}${firstVerse ? `.${firstVerse}` : ''}`;
+  const end = lastVerse ? `-${book.id}.${chapter}.${lastVerse}` : '';
+  const passage = await request(
+    `/bibles/${encodeURIComponent(bible.id)}/passages/${encodeURIComponent(`${start}${end}`)}?content-type=text`
+  );
+  const content = Array.isArray(passage.content)
+    ? passage.content.map((item) => typeof item === 'string' ? item : item.text || '').join('')
+    : passage.content || '';
+  return {
+    reference: passage.reference || reference,
+    text: content.replace(/<[^>]*>/g, '').trim(),
+    translation_name: bible.name || 'New King James Version',
+  };
+}
+
 function isReacted(reactions, userId) {
   return (reactions || []).some((reaction) => {
     const reactionUser = typeof reaction === 'string'
@@ -72,6 +135,7 @@ export default function ChurchDashboardShell({
   getIdToken,
 }) {
   const { user, logout, refreshProfile } = useAuth();
+  const { showToast } = useToast();
   const settingsRef = useRef(null);
   const notificationsRef = useRef(null);
   const bibleRequestVersion = useRef(0);
@@ -111,10 +175,8 @@ export default function ChurchDashboardShell({
   const [verseReaction, setVerseReaction] = useState({ reacted: false, reactionCount: 0 });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [welcomeSlides, setWelcomeSlides] = useState([]);
-  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const welcomeSlides = LOCAL_WELCOME_SLIDES;
   const [welcomeIndex, setWelcomeIndex] = useState(0);
-  const [slideshowError, setSlideshowError] = useState('');
   const [qrOpen, setQrOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState({
@@ -125,6 +187,26 @@ export default function ChurchDashboardShell({
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileNotice, setProfileNotice] = useState('');
+
+  useEffect(() => {
+    if (actionError) showToast(actionError, 'error');
+  }, [actionError, showToast]);
+
+  useEffect(() => {
+    if (mediaError) showToast(mediaError, 'error');
+  }, [mediaError, showToast]);
+
+  useEffect(() => {
+    if (mediaNotice) showToast(mediaNotice, 'success');
+  }, [mediaNotice, showToast]);
+
+  useEffect(() => {
+    if (profileError) showToast(profileError, 'error');
+  }, [profileError, showToast]);
+
+  useEffect(() => {
+    if (profileNotice) showToast(profileNotice, 'success');
+  }, [profileNotice, showToast]);
 
   const loadAnnouncements = useCallback(async () => {
     const result = await apiRequest('/announcements', { getIdToken, apiBaseUrl });
@@ -210,6 +292,21 @@ export default function ChurchDashboardShell({
         });
         socket.on('announcement:published', () => {
           loadAnnouncements().catch((error) => setActionError(getErrorMessage(error)));
+        });
+        socket.on('attendance:recorded', () => {
+          window.dispatchEvent(new CustomEvent('tlbc:attendance-recorded'));
+          const requests = [
+            apiRequest('/analytics/leaderboard', { getIdToken, apiBaseUrl }),
+          ];
+          if (user?.role === 'admin') {
+            requests.push(apiRequest('/analytics/summary', { getIdToken, apiBaseUrl }));
+          }
+          Promise.all(requests)
+            .then(([leaderboard, summary]) => {
+              setAttendanceLeaderboard(leaderboard.members || []);
+              if (summary) setAnalytics(summary);
+            })
+            .catch((error) => setActionError(getErrorMessage(error)));
         });
         socket.on('announcement:reaction', ({ announcementId, userIds }) => {
           setAnnouncements((items) =>
@@ -333,6 +430,7 @@ export default function ChurchDashboardShell({
     loadAnnouncements,
     loadBirthdays,
     user?._id,
+    user?.role,
   ]);
 
   useEffect(() => {
@@ -354,33 +452,6 @@ export default function ChurchDashboardShell({
     };
   }, [loadNotifications]);
 
-  const closeWelcomeSlideshow = useCallback(() => {
-    setWelcomeOpen(false);
-    if (user?._id) {
-      sessionStorage.setItem(`tlbc-welcome-slideshow-seen:${user._id}`, 'true');
-    }
-  }, [user?._id]);
-
-  useEffect(() => {
-    let active = true;
-    apiRequest('/slideshows', { getIdToken, apiBaseUrl })
-      .then((result) => {
-        if (!active) return;
-        const slides = result.slides || [];
-        setWelcomeSlides(slides);
-        const seenKey = `tlbc-welcome-slideshow-seen:${user?._id}`;
-        if (slides.length && user?._id && sessionStorage.getItem(seenKey) !== 'true') {
-          setWelcomeOpen(true);
-        }
-      })
-      .catch((error) => {
-        if (active) setSlideshowError(getErrorMessage(error));
-      });
-    return () => {
-      active = false;
-    };
-  }, [apiBaseUrl, getIdToken, user?._id]);
-
   useEffect(() => {
     let active = true;
     loadAnnouncements().catch((error) => {
@@ -389,10 +460,7 @@ export default function ChurchDashboardShell({
     loadBirthdays().catch((error) => {
       if (active) setActionError(getErrorMessage(error));
     });
-    if (
-      user?.role === 'admin' ||
-      (user?.role === 'member' && Boolean(user.secondaryDesignation))
-    ) {
+    if (user?.role === 'admin') {
       Promise.all([
         apiRequest('/analytics/summary', { getIdToken, apiBaseUrl }),
         apiRequest('/analytics/leaderboard', { getIdToken, apiBaseUrl }),
@@ -405,8 +473,16 @@ export default function ChurchDashboardShell({
         .catch((error) => {
           if (active) setActionError(getErrorMessage(error));
         });
+    } else if (user?.role === 'member') {
+      apiRequest('/analytics/leaderboard', { getIdToken, apiBaseUrl })
+        .then((leaderboard) => {
+          if (active) setAttendanceLeaderboard(leaderboard.members || []);
+        })
+        .catch((error) => {
+          if (active) setActionError(getErrorMessage(error));
+        });
     }
-    if (user?.role === 'member' && user.secondaryDesignation) {
+    if (user?.role === 'member' && getDesignations(user).length > 0) {
       loadMedia().catch((error) => {
         if (active) setMediaError(getErrorMessage(error));
       });
@@ -430,6 +506,7 @@ export default function ChurchDashboardShell({
     loadBirthdays,
     loadMedia,
     user?.role,
+    user?.secondaryDesignations,
     user?.secondaryDesignation,
   ]);
 
@@ -508,22 +585,13 @@ export default function ChurchDashboardShell({
   }, [notificationsOpen]);
 
   useEffect(() => {
-    if (!welcomeOpen) return undefined;
-    function closeOnEscape(event) {
-      if (event.key === 'Escape') closeWelcomeSlideshow();
-    }
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [closeWelcomeSlideshow, welcomeOpen]);
-
-  useEffect(() => {
-    if (!welcomeOpen || welcomeSlides.length < 2) return undefined;
+    if (welcomeSlides.length < 2) return undefined;
     const timer = window.setInterval(
       () => setWelcomeIndex((index) => (index + 1) % welcomeSlides.length),
-      6000
+      3000
     );
     return () => window.clearInterval(timer);
-  }, [welcomeOpen, welcomeSlides.length]);
+  }, [welcomeSlides.length]);
 
   useEffect(() => {
     let active = true;
@@ -566,13 +634,14 @@ export default function ChurchDashboardShell({
   const heroAnnouncement = announcements[slide % Math.max(announcements.length, 1)];
   const profileName = user?.name || 'Church member';
   const photo = user?.profilePicture;
-  const isLeader = user?.role === 'member' && Boolean(user.secondaryDesignation);
+  const designationText = getDesignations(user).join(', ');
+  const isLeader = user?.role === 'member' && getDesignations(user).length > 0;
   const isKspLeader =
     user?.role === 'member' &&
-    user.secondaryDesignation?.trim().toLowerCase() === 'ksp leader';
+    hasDesignation(user, 'KSP Leader');
   const canViewReports =
-    user?.role === 'admin' ||
-    (user?.role === 'member' && Boolean(user.secondaryDesignation));
+    user?.role === 'admin';
+  const canViewLeaderboard = ['admin', 'member'].includes(user?.role);
   const selectedBook = BIBLE_BOOKS.find(([book]) => book === readerBook) || BIBLE_BOOKS[0];
 
   async function loadBibleReference(reference, translation = bibleTranslation) {
@@ -581,6 +650,12 @@ export default function ChurchDashboardShell({
     setReaderError('');
     setReaderVerse(null);
     try {
+      if (translation === 'nkjv') {
+        const result = await fetchNkjvReference(reference);
+        if (requestVersion !== bibleRequestVersion.current) return;
+        setReaderVerse(result);
+        return;
+      }
       const response = await fetch(
         `https://bible-api.com/${encodeURIComponent(reference)}?translation=${encodeURIComponent(translation)}`
       );
@@ -741,9 +816,6 @@ export default function ChurchDashboardShell({
         return;
       }
     }
-    if (user?._id) {
-      sessionStorage.removeItem(`tlbc-welcome-slideshow-seen:${user._id}`);
-    }
     await logout();
   }
 
@@ -891,7 +963,7 @@ export default function ChurchDashboardShell({
     user?.name,
     user?.email,
     user?.profilePicture,
-    user?.groupName || user?.secondaryDesignation,
+    user?.groupName || designationText,
   ];
   const profileCompletion = Math.round(
     (profileCompletionFields.filter(Boolean).length / profileCompletionFields.length) * 100
@@ -900,15 +972,15 @@ export default function ChurchDashboardShell({
   return (
     <main className="church-dashboard-shell min-h-screen bg-[#f7f8fc] text-slate-800 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto grid min-h-screen max-w-[1800px] grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[218px_minmax(0,1fr)_286px]">
-        <aside className="hidden flex-col border-r border-slate-200 bg-white px-3 py-5 md:flex xl:px-5">
+        <aside className="sticky top-0 hidden h-screen self-start flex-col overflow-y-auto border-r border-slate-200 bg-white px-3 py-5 md:flex xl:px-5">
           <Link to="/" className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900">
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-violet-600 text-sm text-white">✦</span>
-            <span>TLBC</span>
+            <img src="/images/logo/Logo.jpg" alt="The Life Builder Church" className="h-10 w-10 rounded-full object-cover" />
           </Link>
           <p className="mb-3 mt-9 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Overview</p>
           <nav className="space-y-1">
             {[
               ...navItems.filter((item) => item.label !== 'Tasks' || isLeader),
+              ...(user?.role === 'admin' ? [{ label: 'User management', href: '#user-management', icon: '♙' }] : []),
               ...(isKspLeader ? [{ label: 'Attendance', href: '#attendance-monitoring', icon: '✓' }] : []),
               ...(canViewReports ? [{ label: 'Reports', href: '#reports', icon: '▥' }] : []),
               ...(user?.role === 'admin' ? [{ label: 'Welcome slides', href: '#slideshow-management', icon: '▧' }] : []),
@@ -935,7 +1007,7 @@ export default function ChurchDashboardShell({
             </a>
             <a href="#ministry-media" className="flex items-center gap-3 rounded-lg text-xs text-slate-600 hover:text-violet-700">
               <span className="grid h-7 w-7 place-items-center rounded-full bg-sky-100">♫</span>
-              <span><b className="block font-semibold text-slate-700">Ministry teams</b>{user?.secondaryDesignation || 'Find your place'}</span>
+              <span><b className="block font-semibold text-slate-700">Ministry teams</b>{designationText || 'Find your place'}</span>
             </a>
           </div>
         </aside>
@@ -960,6 +1032,25 @@ export default function ChurchDashboardShell({
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               />
             </label>
+            {user?.role === 'admin' && (
+              <Link
+                to="/scanner"
+                aria-label="Open QR attendance scanner"
+                title="QR attendance scanner"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  className="h-5 w-5"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2h-2z" />
+                </svg>
+              </Link>
+            )}
             <div ref={notificationsRef} className="relative shrink-0">
               <button
                 type="button"
@@ -987,11 +1078,16 @@ export default function ChurchDashboardShell({
                   </span>
                 )}
               </button>
-              {notificationsOpen && (
-                <section
-                  aria-label="Notifications"
-                  className="absolute right-0 top-12 z-30 w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-                >
+              <section
+                aria-label="Notifications"
+                aria-hidden={!notificationsOpen}
+                inert={!notificationsOpen}
+                className={`absolute right-0 top-12 z-30 w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-all duration-300 ease-in-out motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-900 ${
+                  notificationsOpen
+                    ? 'translate-y-0 scale-100 opacity-100'
+                    : 'pointer-events-none -translate-y-2 scale-95 opacity-0'
+                }`}
+              >
                   <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700">
                     <div>
                       <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Notifications</h2>
@@ -1047,13 +1143,12 @@ export default function ChurchDashboardShell({
                     </button>
                     {pushError && <p role="alert" className="mt-2 text-xs text-red-700 dark:text-red-300">{pushError}</p>}
                   </div>
-                </section>
-              )}
+              </section>
             </div>
             <div ref={settingsRef} className="relative shrink-0">
               <button
                 type="button"
-                aria-label="Open settings menu"
+                aria-label={settingsOpen ? 'Close settings menu' : 'Open settings menu'}
                 aria-expanded={settingsOpen}
                 onClick={() => setSettingsOpen((open) => !open)}
                 className="grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
@@ -1062,8 +1157,15 @@ export default function ChurchDashboardShell({
                   <circle cx="5" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="19" cy="12" r="1.7" />
                 </svg>
               </button>
-              {settingsOpen && (
-                <div className="absolute right-0 top-12 z-30 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+              <div
+                aria-hidden={!settingsOpen}
+                inert={!settingsOpen}
+                className={`absolute right-0 top-12 z-30 w-52 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl transition-all duration-300 ease-in-out motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-900 ${
+                  settingsOpen
+                    ? 'translate-y-0 scale-100 opacity-100'
+                    : 'pointer-events-none -translate-y-2 scale-95 opacity-0'
+                }`}
+              >
                   <button
                     type="button"
                     onClick={() => { setSettingsOpen(false); setProfileOpen(true); setProfileError(''); setProfileNotice(''); }}
@@ -1087,13 +1189,16 @@ export default function ChurchDashboardShell({
                   >
                     <span aria-hidden="true">⇥</span> Log Out
                   </button>
-                </div>
-              )}
+              </div>
             </div>
           </header>
 
-          {mobileNavOpen && (
-            <div className="fixed inset-0 z-40 md:hidden">
+          <div
+            aria-hidden={!mobileNavOpen}
+            className={`fixed inset-0 z-40 transition-opacity duration-300 ease-in-out motion-reduce:transition-none md:hidden ${
+              mobileNavOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+            }`}
+          >
               <button
                 type="button"
                 aria-label="Close navigation menu"
@@ -1102,7 +1207,10 @@ export default function ChurchDashboardShell({
               />
               <nav
                 aria-label="Mobile dashboard navigation"
-                className="absolute inset-y-0 left-0 flex w-[min(84vw,340px)] flex-col overflow-y-auto border-r border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+                inert={!mobileNavOpen}
+                className={`absolute inset-y-0 left-0 flex w-[min(84vw,340px)] flex-col overflow-y-auto border-r border-slate-200 bg-white p-5 shadow-2xl transition-transform duration-300 ease-in-out motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-900 ${
+                  mobileNavOpen ? 'translate-x-0' : '-translate-x-full'
+                }`}
               >
                 <div className="mb-6 flex items-center justify-between">
                   <span className="text-lg font-bold text-slate-900 dark:text-slate-100">TLBC menu</span>
@@ -1111,6 +1219,7 @@ export default function ChurchDashboardShell({
                 <div className="space-y-1">
                   {[
                     ...navItems.filter((item) => item.label !== 'Tasks' || isLeader),
+                    ...(user?.role === 'admin' ? [{ label: 'User management', href: '#user-management', icon: '♙' }] : []),
                     ...(isKspLeader ? [{ label: 'Attendance', href: '#attendance-monitoring', icon: '✓' }] : []),
                     ...(canViewReports ? [{ label: 'Reports', href: '#reports', icon: '▥' }] : []),
                     ...(user?.role === 'admin' ? [{ label: 'Welcome slides', href: '#slideshow-management', icon: '▧' }] : []),
@@ -1131,8 +1240,7 @@ export default function ChurchDashboardShell({
                 <a href="#groups" onClick={() => setMobileNavOpen(false)} className="mt-2 flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-700 hover:bg-violet-50 dark:text-slate-200 dark:hover:bg-slate-800">♧ Small groups</a>
                 <a href="#ministry-media" onClick={() => setMobileNavOpen(false)} className="flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-slate-700 hover:bg-violet-50 dark:text-slate-200 dark:hover:bg-slate-800">♫ Ministry teams</a>
               </nav>
-            </div>
-          )}
+          </div>
 
           <section className="relative mb-4 min-h-[150px] overflow-hidden rounded-2xl bg-gradient-to-r from-[#5e55dc] via-[#7162e8] to-[#7862e3] px-6 py-6 text-white shadow-sm sm:px-8">
             {heroAnnouncement?.banner?.url && (
@@ -1167,9 +1275,41 @@ export default function ChurchDashboardShell({
             )}
           </section>
 
+          <section
+            aria-label="Church welcome slideshow"
+            className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="flex min-h-40 items-center justify-center bg-slate-950">
+              <img
+                key={welcomeSlides[welcomeIndex]?.id}
+                src={welcomeSlides[welcomeIndex]?.src}
+                alt={welcomeSlides[welcomeIndex]?.title || 'Church welcome'}
+                className="welcome-slideshow-image block h-auto max-h-[min(60vh,520px)] w-full object-contain"
+              />
+            </div>
+            <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-600 dark:text-violet-300">
+                  Welcome to The Life Builder Church · {welcomeIndex + 1} of {welcomeSlides.length}
+                </p>
+                <h2 className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+                  {welcomeSlides[welcomeIndex]?.title}
+                </h2>
+                {welcomeSlides[welcomeIndex]?.caption && (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+                    {welcomeSlides[welcomeIndex].caption}
+                  </p>
+                )}
+              </div>
+              <p className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                Slide {welcomeIndex + 1} of {welcomeSlides.length}
+              </p>
+            </div>
+          </section>
+
           <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {[
-              { label: 'My community', value: user?.groupName || user?.secondaryDesignation || 'Church family', color: 'bg-violet-100 text-violet-700', icon: '♧', href: '#groups' },
+              { label: 'My community', value: user?.groupName || designationText || 'Church family', color: 'bg-violet-100 text-violet-700', icon: '♧', href: '#groups' },
               { label: 'Church updates', value: `${announcements.length} announcement${announcements.length === 1 ? '' : 's'}`, color: 'bg-pink-100 text-pink-700', icon: '✦', href: '#announcements' },
               { label: 'This month', value: `${birthdays.length} birthday${birthdays.length === 1 ? '' : 's'}`, color: 'bg-sky-100 text-sky-700', icon: '🎂', href: '#birthday-celebrants' },
             ].map((metric) => (
@@ -1183,13 +1323,38 @@ export default function ChurchDashboardShell({
             ))}
           </div>
 
-          {actionError && (
-            <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{actionError}</p>
-          )}
-          {slideshowError && (
-            <p role="status" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Welcome slideshow could not be loaded: {slideshowError}
-            </p>
+          {canViewLeaderboard && (
+            <Link
+              to="/leaderboards"
+              aria-label="View full attendance leaderboard"
+              className="mb-6 block rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-violet-300 dark:border-slate-700 dark:bg-slate-900 xl:hidden"
+            >
+              <span className="flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Attendance leaderboard</span>
+                <span className="text-[10px] text-slate-400">View all →</span>
+              </span>
+              {attendanceLeaderboard.length ? (
+                <span className="mt-3 grid grid-cols-3 gap-2">
+                  {attendanceLeaderboard.slice(0, 3).map((member, index) => (
+                    <span
+                      key={member.memberId}
+                      className="min-w-0 rounded-lg bg-slate-50 p-2 text-center dark:bg-slate-800"
+                    >
+                      <span className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                        {member.presentCount} Present
+                      </span>
+                      <span className="mt-1 block truncate text-[10px] text-slate-500 dark:text-slate-400">
+                        {index + 1}. {member.memberName}
+                      </span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="mt-3 block rounded-lg bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                  No ranked members yet. Open the full leaderboard for details.
+                </span>
+              )}
+            </Link>
           )}
 
           <section id="announcements" className="mb-6">
@@ -1437,8 +1602,6 @@ export default function ChurchDashboardShell({
                   {mediaBusy ? 'Uploading…' : 'Upload file'}
                 </button>
               </form>
-              {mediaError && <p role="alert" className="mt-2 text-sm text-red-700">{mediaError}</p>}
-              {mediaNotice && <p role="status" className="mt-2 text-sm text-emerald-700">{mediaNotice}</p>}
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 {media.slice(0, 6).map((item) => (
                   <a key={item._id} href={item.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700 hover:bg-violet-50">
@@ -1456,8 +1619,8 @@ export default function ChurchDashboardShell({
             <p className="mt-2 text-sm text-slate-600">
               {user?.groupName
                 ? `You are connected with ${user.groupName}.`
-                : user?.secondaryDesignation
-                  ? `You serve as ${user.secondaryDesignation}.`
+                : designationText
+                  ? `You serve as ${designationText}.`
                   : 'Stay connected with your small group and find a way to serve.'}
             </p>
           </section>
@@ -1470,7 +1633,7 @@ export default function ChurchDashboardShell({
                   <h2 className="text-lg font-bold text-slate-900">{leadershipGroup.group.name}</h2>
                   <p className="text-sm text-slate-500">Group {leadershipGroup.group.groupNumber} · {leadershipGroup.members.length} members</p>
                 </div>
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{user.secondaryDesignation}</span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{designationText}</span>
               </div>
               <div className="mt-4 overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
@@ -1481,7 +1644,7 @@ export default function ChurchDashboardShell({
                     {leadershipGroup.members.map((member) => (
                       <tr key={member.id}>
                         <td className="py-2.5 pr-4 font-medium text-slate-700">{member.name}</td>
-                        <td className="py-2.5 text-slate-500">{member.secondaryDesignation || 'Member'}</td>
+                        <td className="py-2.5 text-slate-500">{getDesignations(member).join(', ') || 'Member'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1510,100 +1673,11 @@ export default function ChurchDashboardShell({
           )}
         </section>
 
-        {welcomeOpen && welcomeSlides.length > 0 && (
-          <div
-            className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/75 p-3 backdrop-blur-sm sm:p-6"
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) closeWelcomeSlideshow();
-            }}
-          >
-            <section
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="welcome-slideshow-title"
-              className="my-auto w-full max-w-3xl overflow-hidden rounded-3xl border border-white/20 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-            >
-              <div className="relative flex min-h-56 items-center justify-center bg-slate-950 sm:min-h-80">
-                <img
-                  key={welcomeSlides[welcomeIndex]?.url}
-                  src={welcomeSlides[welcomeIndex]?.url}
-                  alt={welcomeSlides[welcomeIndex]?.title || 'Church welcome'}
-                  className="welcome-slideshow-image absolute inset-0 h-full w-full object-contain"
-                />
-                <button
-                  type="button"
-                  aria-label="Close welcome slideshow"
-                  onClick={closeWelcomeSlideshow}
-                  className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full border border-white/30 bg-slate-950/50 text-xl text-white transition hover:bg-slate-950/80"
-                >
-                  ×
-                </button>
-                {welcomeSlides.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      aria-label="Previous slideshow image"
-                      onClick={() => setWelcomeIndex((index) => (index - 1 + welcomeSlides.length) % welcomeSlides.length)}
-                      className="absolute left-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/30 bg-slate-950/50 text-xl text-white transition hover:bg-slate-950/80 sm:left-5"
-                    >
-                      ‹
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Next slideshow image"
-                      onClick={() => setWelcomeIndex((index) => (index + 1) % welcomeSlides.length)}
-                      className="absolute right-3 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full border border-white/30 bg-slate-950/50 text-xl text-white transition hover:bg-slate-950/80 sm:right-5"
-                    >
-                      ›
-                    </button>
-                  </>
-                )}
-              </div>
-              <div className="p-5 sm:p-7">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">
-                  Welcome to The Life Builder Church · {welcomeIndex + 1} of {welcomeSlides.length}
-                </p>
-                <h2 id="welcome-slideshow-title" className="mt-2 text-xl font-bold text-slate-900 dark:text-slate-100 sm:text-2xl">
-                  {welcomeSlides[welcomeIndex]?.title}
-                </h2>
-                {welcomeSlides[welcomeIndex]?.caption && (
-                  <p className="mt-2 break-words text-sm leading-6 text-slate-600 dark:text-slate-300">
-                    {welcomeSlides[welcomeIndex].caption}
-                  </p>
-                )}
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2" aria-label="Slideshow pages">
-                    {welcomeSlides.map((item, index) => (
-                      <button
-                        key={item._id}
-                        type="button"
-                        aria-label={`Show slide ${index + 1}`}
-                        aria-current={index === welcomeIndex ? 'true' : undefined}
-                        onClick={() => setWelcomeIndex(index)}
-                        className="grid h-11 w-11 place-items-center rounded-full"
-                      >
-                        <span className={`h-3 w-3 rounded-full transition ${index === welcomeIndex ? 'bg-violet-600 ring-4 ring-violet-100 dark:ring-violet-900' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                      </button>
-                    ))}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeWelcomeSlideshow}
-                    className="min-h-12 w-full rounded-xl bg-violet-600 px-5 text-sm font-bold text-white transition hover:bg-violet-700 sm:w-auto"
-                  >
-                    Close / Continue
-                  </button>
-                </div>
-              </div>
-            </section>
-          </div>
-        )}
-
         <MemberQRCode user={user} open={qrOpen} onClose={() => setQrOpen(false)} showTrigger={false} />
 
         {profileOpen && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-slate-950/60 p-2 backdrop-blur-sm sm:p-4"
             onMouseDown={(event) => {
               if (event.target === event.currentTarget) setProfileOpen(false);
             }}
@@ -1612,37 +1686,38 @@ export default function ChurchDashboardShell({
               role="dialog"
               aria-modal="true"
               aria-labelledby="edit-profile-title"
-              className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/30 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+              className="flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/30 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
             >
-              <header className="flex items-start justify-between bg-emerald-950 px-5 py-5 text-white sm:px-6">
+              <header className="flex shrink-0 items-center justify-between bg-emerald-950 px-4 py-3 text-white sm:px-5">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-200">Account settings</p>
-                  <h2 id="edit-profile-title" className="mt-1 text-xl font-bold">Edit Profile</h2>
+                  <h2 id="edit-profile-title" className="mt-0.5 text-lg font-bold">Edit Profile</h2>
                 </div>
                 <button
                   type="button"
                   aria-label="Close edit profile"
                   onClick={() => setProfileOpen(false)}
-                  className="grid h-9 w-9 place-items-center rounded-full border border-white/20 text-xl text-white/90 transition hover:bg-white/10"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-white/20 text-xl text-white/90 transition hover:bg-white/10"
                 >
                   ×
                 </button>
               </header>
-              <div className="mx-5 mt-5 flex flex-col gap-4 rounded-xl bg-slate-50 p-4 sm:mx-6 sm:flex-row dark:bg-slate-800">
+              <div className="mx-3 mt-3 flex shrink-0 items-center gap-3 rounded-xl bg-slate-50 p-3 sm:mx-5 dark:bg-slate-800">
                 {user?.profilePicture ? (
-                  <img src={user.profilePicture} alt="" className="h-14 w-14 shrink-0 rounded-full object-cover" />
+                  <img src={user.profilePicture} alt="" className="h-11 w-11 shrink-0 rounded-full object-cover" />
                 ) : (
-                  <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-violet-100 text-xl font-bold text-violet-700">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-violet-100 text-xl font-bold text-violet-700">
                     {profileName.charAt(0).toUpperCase()}
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <p className="mb-2 text-sm font-bold text-slate-800 dark:text-slate-100">Change profile picture</p>
+                  <p className="mb-1 text-xs font-bold text-slate-800 dark:text-slate-100">Change profile picture</p>
                   <ImageUpload
                     getIdToken={getIdToken}
                     apiBaseUrl={apiBaseUrl}
                     folder="profile-pictures"
                     label="Upload a profile picture"
+                    compact
                     onUploaded={async (image) => {
                       await apiRequest('/auth/profile-picture', {
                         getIdToken,
@@ -1654,15 +1729,12 @@ export default function ChurchDashboardShell({
                         }),
                       });
                       await refreshProfile();
-                      setProfileNotice('Your profile picture was updated.');
                     }}
                   />
                 </div>
               </div>
-              <form className="space-y-4 p-5 sm:p-6" onSubmit={saveProfile}>
-                {profileError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{profileError}</p>}
-                {profileNotice && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{profileNotice}</p>}
-                <label className="block text-sm font-semibold text-slate-700">
+              <form className="grid grid-cols-2 gap-x-3 gap-y-2 p-3 sm:p-5" onSubmit={saveProfile}>
+                <label className="col-span-2 block text-xs font-semibold text-slate-700 dark:text-slate-200">
                   Full name
                   <input
                     type="text"
@@ -1670,40 +1742,40 @@ export default function ChurchDashboardShell({
                     maxLength={120}
                     value={profileDraft.displayName}
                     onChange={(event) => setProfileDraft((draft) => ({ ...draft, displayName: event.target.value }))}
-                    className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                   />
                 </label>
-                <label className="block text-sm font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
                   Phone number
                   <input
                     type="tel"
                     maxLength={32}
                     value={profileDraft.phoneNumber}
                     onChange={(event) => setProfileDraft((draft) => ({ ...draft, phoneNumber: event.target.value }))}
-                    className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                   />
                 </label>
-                <label className="block text-sm font-semibold text-slate-700">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
                   Birthday
                   <input
                     type="date"
                     value={profileDraft.birthDate}
                     onChange={(event) => setProfileDraft((draft) => ({ ...draft, birthDate: event.target.value }))}
-                    className="mt-1.5 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                    className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                   />
                 </label>
-                <div className="flex justify-end gap-2 pt-2">
+                <div className="col-span-2 flex justify-end gap-2 pt-1">
                   <button
                     type="button"
                     onClick={() => setProfileOpen(false)}
-                    className="min-h-11 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    className="min-h-10 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={profileBusy}
-                    className="min-h-11 rounded-xl bg-emerald-900 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-h-10 rounded-xl bg-emerald-900 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {profileBusy ? 'Saving…' : 'Save changes'}
                   </button>
@@ -1721,42 +1793,56 @@ export default function ChurchDashboardShell({
               <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-violet-100 text-xl font-bold text-violet-700">{profileName.charAt(0).toUpperCase()}</span>
             )}
             <h2 className="mt-3 font-bold text-slate-900">Good day, {profileName.split(' ')[0]} ✨</h2>
-            <p className="mt-1 text-xs text-slate-500">{user?.role === 'admin' ? 'Administrator' : user?.role === 'pastor' ? 'Pastoral team' : user?.secondaryDesignation || 'Church family'}</p>
+            <p className="mt-1 text-xs text-slate-500">{user?.role === 'admin' ? designationText ? `Administrator · ${designationText}` : 'Administrator' : user?.role === 'pastor' ? 'Pastoral team' : designationText || 'Church family'}</p>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-violet-50">
               <div className="h-full rounded-full bg-violet-500" style={{ width: `${profileCompletion}%` }} />
             </div>
             <p className="mt-2 text-[10px] text-slate-400">Profile details {profileCompletion}% complete</p>
           </section>
 
-          <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg dark:border-slate-700 dark:bg-slate-900">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Attendance leaderboard</h2>
-              <span className="text-[10px] text-slate-400">present count</span>
-            </div>
-            {canViewReports ? (
-              attendanceLeaderboard.length ? (
-                <ol className="mt-3 space-y-2">
-                  {attendanceLeaderboard.map((member, index) => (
-                    <li key={member.memberId} className="flex items-center gap-2 text-xs">
-                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-violet-50 font-bold text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate font-medium text-slate-700 dark:text-slate-200">
+          {canViewLeaderboard ? (
+            <Link
+              to="/leaderboards"
+              aria-label="View full attendance leaderboard"
+              className="block rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-violet-300 dark:border-slate-700 dark:bg-slate-900"
+            >
+              <span className="flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Attendance leaderboard</span>
+                <span className="text-[10px] text-slate-400">View all →</span>
+              </span>
+              <span className="mt-4 flex h-28 items-end justify-around gap-3 border-b border-dashed border-slate-200 px-2 dark:border-slate-700">
+                {attendanceLeaderboard.slice(0, 3).map((member, index) => {
+                  const topCount = Math.max(
+                    1,
+                    ...attendanceLeaderboard.slice(0, 3).map((item) => item.presentCount)
+                  );
+                  const height = member.presentCount
+                    ? Math.max(12, Math.round((member.presentCount / topCount) * 78))
+                    : 8;
+                  return (
+                    <span key={member.memberId} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1">
+                      <span className="text-[10px] font-bold text-slate-700 dark:text-slate-200">{member.presentCount}</span>
+                      <span
+                        className={`w-full max-w-12 rounded-t-lg ${
+                          ['bg-amber-400', 'bg-violet-500', 'bg-emerald-500'][index]
+                        }`}
+                        style={{ height: `${height}px` }}
+                      />
+                      <span className="w-full truncate pb-1 text-center text-[9px] text-slate-500 dark:text-slate-400">
                         {member.memberName}
                       </span>
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{member.presentCount}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="mt-3 text-xs leading-5 text-slate-500">
-                  {analytics ? 'No present attendance has been recorded yet.' : 'Attendance leaderboard is loading.'}
-                </p>
-              )
-            ) : (
-              <p className="mt-3 text-xs leading-5 text-slate-500">The leaderboard is available to members with a secondary designation and administrators.</p>
-            )}
-          </section>
+                    </span>
+                  );
+                })}
+                {!attendanceLeaderboard.length && (
+                  <span className="pb-3 text-xs text-slate-500">
+                    {analytics ? 'No attendance recorded' : 'Loading leaderboard…'}
+                  </span>
+                )}
+              </span>
+              <span className="mt-2 block text-center text-[10px] text-slate-400">Present attendances · Top 3</span>
+            </Link>
+          ) : null}
 
           <section
             id="verse-of-day"

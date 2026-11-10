@@ -1,28 +1,29 @@
 # Backend configuration
 
-Manual Gmail registration sends a six-digit, single-use confirmation code before
-creating the Firebase and MongoDB accounts. Configure these environment variables
-for the API process:
+Manual Gmail registration stores a pending MongoDB profile and a bcrypt-hashed
+password/OTP, then emails a six-digit code. Firebase Authentication account
+creation and account activation happen only after the code is verified. Configure
+these environment variables for the API process:
 
 | Variable | Purpose |
 | --- | --- |
 | `SMTP_HOST` | SMTP server hostname |
 | `SMTP_PORT` | SMTP port (`465` for implicit TLS, commonly `587` for STARTTLS) |
 | `SMTP_USER` | SMTP account username |
-| `SMTP_PASSWORD` | SMTP account password or provider app password |
-| `SMTP_FROM` | Verified sender address |
-| `REGISTRATION_CODE_SECRET` | Private random secret used to hash registration codes |
+| `SMTP_PASS` | SMTP account password or provider app password (`SMTP_PASSWORD` is also accepted) |
+| `SMTP_FROM` | Optional verified sender address; defaults to `SMTP_USER` |
 
 For Gmail SMTP, use a Google app password rather than the account's normal
-password. Generate a separate high-entropy `REGISTRATION_CODE_SECRET` for each
-environment and store it with the other deployment secrets. Email registration
-returns a configuration error until these variables are present.
-Generate a secret with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
-Enable the Email/Password sign-in provider in Firebase Authentication so members
-can sign in with the password they set during registration.
+password. On startup the API runs `transporter.verify()` and logs whether SMTP
+connection verification succeeded. Email registration returns a configuration
+error until the required SMTP settings are present. Enable the Email/Password
+sign-in provider in Firebase Authentication so members can sign in with the
+password they set during registration.
 
 Codes expire after 10 minutes, can be resent after a 60-second cooldown, and are
-invalidated after five incorrect attempts.
+invalidated after five incorrect attempts. The API endpoints are
+`POST /api/auth/register`, `POST /api/auth/verify-otp`, and
+`POST /api/auth/resend-otp`.
 
 ## Local admin testing
 
@@ -53,9 +54,11 @@ Uploaded images and slide order are stored in Cloudinary and MongoDB
 respectively; the dashboard fetches the active slides after sign-in.
 
 The built-in Bible reader offers the public translations provided by
-bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). Copyrighted
-translations such as NIV/ESV require a separately licensed provider/API key and
-are not advertised as available by the public endpoint.
+bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). NKJV is served by
+API.Bible because it is a licensed translation. Configure
+`VITE_API_BIBLE_KEY` in the frontend build environment and enable NKJV for that
+API.Bible key; without this configuration, the reader displays a clear setup
+error when NKJV is selected.
 
 ## Live reactions and notifications
 

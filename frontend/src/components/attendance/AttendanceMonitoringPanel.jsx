@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiRequest, getErrorMessage } from '../../services/api';
+import { useToast } from '../../context/ToastContext';
+import { getDesignations } from '../../utils/designations';
 
 const statusStyles = {
   present: 'attendance-status-present bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
@@ -19,11 +21,11 @@ export default function AttendanceMonitoringPanel({
   getIdToken,
   apiBaseUrl = '/api',
 }) {
+  const { showToast } = useToast();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -36,19 +38,28 @@ export default function AttendanceMonitoringPanel({
       setSummary(result);
     } catch (loadError) {
       setError(getErrorMessage(loadError));
+      showToast(getErrorMessage(loadError), 'error');
     } finally {
       setLoading(false);
     }
-  }, [apiBaseUrl, getIdToken]);
+  }, [apiBaseUrl, getIdToken, showToast]);
 
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
 
+  useEffect(() => {
+    const refreshSummary = () => {
+      loadSummary();
+    };
+    window.addEventListener('tlbc:attendance-recorded', refreshSummary);
+    return () =>
+      window.removeEventListener('tlbc:attendance-recorded', refreshSummary);
+  }, [loadSummary]);
+
   async function updateStatus(member, status) {
     const previous = summary;
     setError('');
-    setNotice('');
     setSavingId(String(member.userId));
     setSummary((current) => ({
       ...current,
@@ -63,10 +74,11 @@ export default function AttendanceMonitoringPanel({
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
-      setNotice(`Updated ${member.name} to ${status}.`);
+      showToast(`Updated ${member.name} to ${status}.`, 'success');
     } catch (saveError) {
       setSummary(previous);
       setError(getErrorMessage(saveError));
+      showToast(getErrorMessage(saveError), 'error');
     } finally {
       setSavingId('');
     }
@@ -109,8 +121,6 @@ export default function AttendanceMonitoringPanel({
         </span>
       </div>
 
-      {error && <p role="alert" className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
-      {notice && <p role="status" className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{notice}</p>}
       {loading ? (
         <p role="status" className="py-6 text-center text-sm text-slate-500">Loading attendance…</p>
       ) : error && !summary ? null : members.length === 0 ? (
@@ -133,9 +143,9 @@ export default function AttendanceMonitoringPanel({
                 <tr key={member.userId}>
                   <th scope="row" className="px-3 py-3 font-semibold text-slate-800 dark:text-slate-100">
                     <span className="block max-w-[14rem] truncate">{member.name}</span>
-                    {member.secondaryDesignation && (
+                    {getDesignations(member).length > 0 && (
                       <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-slate-300">
-                        {member.secondaryDesignation}
+                        {getDesignations(member).join(', ')}
                       </span>
                     )}
                   </th>

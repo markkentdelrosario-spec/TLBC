@@ -1,76 +1,104 @@
 const express = require('express');
 const crypto = require('node:crypto');
+const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const { getAuth } = require('firebase-admin/auth');
 const firebaseApp = require('../config/firebaseAdmin');
 const { verifyFirebaseIdToken, authenticate } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
-const RegistrationCode = require('../models/RegistrationCode');
 const User = require('../models/User');
 
 const router = express.Router();
-const REGISTRATION_CODE_TTL_MS = 10 * 60 * 1000;
-const REGISTRATION_RESEND_COOLDOWN_MS = 60 * 1000;
-const MAX_REGISTRATION_CODE_ATTEMPTS = 5;
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const MAX_OTP_ATTEMPTS = 5;
+const OTP_HASH_ROUNDS = 10;
+
+function getSmtpConfig() {
+  const password = process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  return {
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    user: process.env.SMTP_USER,
+    password,
+    from,
+  };
+}
 
 function normalizeGmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-function registrationCodeHash(email, code) {
-  const secret = process.env.REGISTRATION_CODE_SECRET;
-  if (!secret) {
-    throw new Error('REGISTRATION_CODE_SECRET is required for email registration.');
-  }
-  return crypto
-    .createHmac('sha256', secret)
-    .update(`${email}:${code}`)
-    .digest('hex');
-}
-
 function createRegistrationMailer() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM } = process.env;
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASSWORD || !SMTP_FROM) {
+  const { host, port: rawPort, user, password, from } = getSmtpConfig();
+  if (!host || !rawPort || !user || !password || !from) {
     return null;
   }
-  const port = Number(SMTP_PORT);
+  const port = Number(rawPort);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('SMTP_PORT must be a valid TCP port.');
   }
   return nodemailer.createTransport({
-    host: SMTP_HOST,
+    host,
     port,
     secure: port === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
+    auth: { user, pass: password },
   });
 }
 
-router.post('/registration-code', async (req, res, next) => {
+function escapeHtml(value) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]);
+}
+
+async function sendRegistrationOtp(mailer, email, displayName, otp) {
+  const safeName = escapeHtml(displayName);
+  await mailer.sendMail({
+    from: getSmtpConfig().from,
+    to: email,
+    subject: 'Your Life Builder Church verification code',
+    text: `Hello ${displayName}, your verification code is ${otp}. It expires in 10 minutes.`,
+    html: `
+      <div style="margin:0;padding:32px 16px;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a">
+        <div style="max-width:520px;margin:0 auto;padding:32px;border-radius:20px;background:#ffffff">
+          <p style="margin:0;color:#047857;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase">The Life Builder Church</p>
+          <h1 style="margin:16px 0 8px;font-size:24px">Verify your email</h1>
+          <p style="margin:0 0 20px;color:#475569">Hello ${safeName}, use this one-time code to finish creating your account.</p>
+          <div style="padding:18px;border-radius:14px;background:#ecfdf5;text-align:center;color:#064e3b;font-size:32px;font-weight:700;letter-spacing:8px">${otp}</div>
+          <p style="margin:20px 0 0;color:#64748b;font-size:13px">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p>
+        </div>
+      </div>`,
+  });
+}
+
+function getRegistrationMailerError() {
+  return 'Email registration is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS (or SMTP_PASSWORD).';
+}
+
+async function registerManualAccount(req, res, next) {
   const body = req.body || {};
-  if (!process.env.REGISTRATION_CODE_SECRET) {
-    return res.status(503).json({
-      message: 'Email registration is not configured. Set REGISTRATION_CODE_SECRET.',
-    });
-  }
-  const displayName =
-    typeof body.name === 'string' ? body.name.trim() : '';
+  const displayName = typeof body.name === 'string' ? body.name.trim() : '';
   const email = normalizeGmail(body.email);
-  const phoneNumber =
-    typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : '';
+  const phoneNumber = typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : '';
+  const password = typeof body.password === 'string' ? body.password : '';
+
   if (!displayName || displayName.length > 120) {
-    return res.status(400).json({
-      message: 'Full name is required and must be 120 characters or fewer.',
-    });
+    return res.status(400).json({ message: 'Full name is required and must be 120 characters or fewer.' });
   }
   if (!/^[^\s@]+@gmail\.com$/.test(email)) {
-    return res.status(400).json({
-      message: 'Use a valid Gmail address ending in @gmail.com.',
-    });
+    return res.status(400).json({ message: 'Use a valid Gmail address ending in @gmail.com.' });
   }
   if (phoneNumber.length > 32) {
-    return res.status(400).json({
-      message: 'Phone number must be 32 characters or fewer.',
-    });
+    return res.status(400).json({ message: 'Phone number must be 32 characters or fewer.' });
+  }
+  if (password.length < 8 || password.length > 128) {
+    return res.status(400).json({ message: 'Password must be between 8 and 128 characters.' });
   }
 
   let mailer;
@@ -79,186 +107,196 @@ router.post('/registration-code', async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
-  if (!mailer) {
-    return res.status(503).json({
-      message:
-        'Email registration is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, and REGISTRATION_CODE_SECRET.',
+  if (!mailer) return res.status(503).json({ message: getRegistrationMailerError() });
+
+  let pendingUser;
+  try {
+    const existingUser = await User.findOne({ email }).select('_id isVerified');
+    if (existingUser) {
+      return res.status(409).json({
+        message: existingUser.isVerified
+          ? 'An account already exists for this Gmail address. Please sign in.'
+          : 'A registration is already pending for this Gmail address. Resend its verification code.',
+      });
+    }
+
+    const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    pendingUser = await User.create({
+      email,
+      displayName,
+      phoneNumber: phoneNumber || undefined,
+      role: 'member',
+      isActive: false,
+      isVerified: false,
+      passwordHash: await bcrypt.hash(password, OTP_HASH_ROUNDS),
+      otp: await bcrypt.hash(otp, OTP_HASH_ROUNDS),
+      otpExpires: new Date(Date.now() + OTP_TTL_MS),
+      otpAttempts: 0,
+      otpLastSentAt: new Date(),
     });
+
+    try {
+      await sendRegistrationOtp(mailer, email, displayName, otp);
+    } catch (error) {
+      await User.deleteOne({ _id: pendingUser._id });
+      return next(error);
+    }
+
+    return res.status(202).json({
+      message: 'A 6-digit verification code was sent to your Gmail address.',
+      email,
+      expiresInSeconds: OTP_TTL_MS / 1000,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: 'An account or registration already exists for this Gmail address.',
+      });
+    }
+    return next(error);
+  }
+}
+
+router.post('/verify-otp', async (req, res, next) => {
+  const email = normalizeGmail(req.body?.email);
+  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!/^[^\s@]+@gmail\.com$/.test(email)) {
+    return res.status(400).json({ message: 'Use a valid Gmail address ending in @gmail.com.' });
+  }
+  if (!/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ message: 'Enter the 6-digit verification code.' });
+  }
+  if (password.length < 8 || password.length > 128) {
+    return res.status(400).json({ message: 'Password must be between 8 and 128 characters.' });
   }
 
   try {
-    const existingUser = await User.findOne({ email }).select('_id').lean();
-    if (existingUser) {
-      return res.status(409).json({
-        message: 'An account already exists for this Gmail address. Please sign in.',
+    const pendingUser = await User.findOne({ email, isVerified: false })
+      .select('+otp +otpExpires +otpAttempts +passwordHash');
+    if (!pendingUser?.otp || !pendingUser.passwordHash) {
+      return res.status(400).json({
+        message: 'No pending registration was found. Request a new verification code.',
+      });
+    }
+    if (!pendingUser.otpExpires || pendingUser.otpExpires <= new Date()) {
+      pendingUser.otp = undefined;
+      pendingUser.otpExpires = null;
+      await pendingUser.save();
+      return res.status(410).json({
+        message: 'Your verification code has expired. Request a new code to continue.',
+      });
+    }
+    if (pendingUser.otpAttempts >= MAX_OTP_ATTEMPTS) {
+      return res.status(429).json({
+        message: 'Too many incorrect codes. Request a new verification code.',
       });
     }
 
-    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-    const now = new Date();
-    const codeHash = registrationCodeHash(email, code);
-    let reservation;
+    const [validOtp, validPassword] = await Promise.all([
+      bcrypt.compare(otp, pendingUser.otp),
+      bcrypt.compare(password, pendingUser.passwordHash),
+    ]);
+    if (!validOtp) {
+      pendingUser.otpAttempts += 1;
+      await pendingUser.save();
+      return res.status(400).json({
+        message: 'That verification code is incorrect. Check the code and try again.',
+      });
+    }
+    if (!validPassword) {
+      return res.status(400).json({
+        message: 'The password no longer matches this pending registration. Restart sign-up.',
+      });
+    }
+
+    let firebaseUser;
     try {
-      reservation = await RegistrationCode.findOneAndUpdate(
-        {
-          email,
-          $or: [
-            {
-              lastSentAt: {
-                $lte: new Date(now.getTime() - REGISTRATION_RESEND_COOLDOWN_MS),
-              },
-            },
-            { lastSentAt: { $exists: false } },
-          ],
-        },
-        {
-          $set: {
-            email,
-            displayName,
-            phoneNumber,
-            codeHash,
-            expiresAt: new Date(now.getTime() + REGISTRATION_CODE_TTL_MS),
-            attempts: 0,
-            lastSentAt: now,
-          },
-        },
-        { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-      );
+      firebaseUser = await getAuth(firebaseApp).createUser({
+        email,
+        password,
+        displayName: pendingUser.displayName,
+        emailVerified: true,
+        disabled: false,
+      });
     } catch (error) {
-      if (error.code === 11000) {
-        return res.status(429).json({
-          message: 'A confirmation code was sent recently. Please wait before requesting another.',
+      if (error.code === 'auth/email-already-exists') {
+        await User.deleteOne({ _id: pendingUser._id });
+        return res.status(409).json({
+          message: 'An account already exists for this Gmail address. Please sign in.',
         });
       }
-      throw error;
+      return next(error);
     }
 
     try {
-      await mailer.sendMail({
-        from: process.env.SMTP_FROM,
-        to: email,
-        subject: 'Your Life Builder Church confirmation code',
-        text: `Your confirmation code is ${code}. It expires in 10 minutes. If you did not request this, you can ignore this message.`,
-        html: `<p>Your confirmation code is <strong style="font-size:24px;letter-spacing:4px">${code}</strong>.</p><p>It expires in 10 minutes. If you did not request this, you can ignore this message.</p>`,
-      });
+      pendingUser.firebaseUid = firebaseUser.uid;
+      pendingUser.isVerified = true;
+      pendingUser.isActive = true;
+      pendingUser.otp = undefined;
+      pendingUser.otpExpires = null;
+      pendingUser.otpAttempts = 0;
+      pendingUser.passwordHash = undefined;
+      await pendingUser.save();
     } catch (error) {
-      await RegistrationCode.deleteOne({
-        _id: reservation._id,
-        codeHash,
+      await getAuth(firebaseApp).deleteUser(firebaseUser.uid).catch((deleteError) => {
+        console.error('Unable to remove incomplete Firebase registration.', deleteError);
       });
-      throw error;
+      return next(error);
     }
-    return res.status(202).json({
-      message: 'A confirmation code was sent to your Gmail address.',
+
+    const customToken = await getAuth(firebaseApp).createCustomToken(firebaseUser.uid);
+    return res.status(200).json({
+      message: 'Your email is verified and your account is ready.',
+      customToken,
     });
   } catch (error) {
     return next(error);
   }
 });
 
-router.post('/complete-registration', async (req, res, next) => {
-  const body = req.body || {};
-  const email = normalizeGmail(body.email);
-  const code = typeof body.code === 'string' ? body.code.trim() : '';
-  const password = typeof body.password === 'string' ? body.password : '';
+router.post('/resend-otp', async (req, res, next) => {
+  const email = normalizeGmail(req.body?.email);
   if (!/^[^\s@]+@gmail\.com$/.test(email)) {
-    return res.status(400).json({
-      message: 'Use a valid Gmail address ending in @gmail.com.',
-    });
+    return res.status(400).json({ message: 'Use a valid Gmail address ending in @gmail.com.' });
   }
-  if (!/^\d{6}$/.test(code)) {
-    return res.status(400).json({ message: 'Enter the 6-digit confirmation code.' });
+
+  let mailer;
+  try {
+    mailer = createRegistrationMailer();
+  } catch (error) {
+    return next(error);
   }
-  if (password.length < 8 || password.length > 128) {
-    return res.status(400).json({
-      message: 'Password must be between 8 and 128 characters.',
-    });
-  }
+  if (!mailer) return res.status(503).json({ message: getRegistrationMailerError() });
 
   try {
-    const pending = await RegistrationCode.findOne({
-      email,
-      expiresAt: { $gt: new Date() },
-      attempts: { $lt: MAX_REGISTRATION_CODE_ATTEMPTS },
-    });
-    if (!pending) {
+    const pendingUser = await User.findOne({ email, isVerified: false })
+      .select('+otp +otpExpires +otpLastSentAt +passwordHash');
+    if (!pendingUser?.passwordHash) {
       return res.status(400).json({
-        message: 'The confirmation code expired or is no longer valid. Request a new code.',
+        message: 'No pending registration was found. Start sign-up again.',
       });
     }
-
-    const suppliedHash = Buffer.from(registrationCodeHash(email, code), 'hex');
-    const savedHash = Buffer.from(pending.codeHash, 'hex');
     if (
-      suppliedHash.length !== savedHash.length ||
-      !crypto.timingSafeEqual(suppliedHash, savedHash)
+      pendingUser.otpLastSentAt &&
+      Date.now() - pendingUser.otpLastSentAt.getTime() < OTP_RESEND_COOLDOWN_MS
     ) {
-      await RegistrationCode.updateOne(
-        { _id: pending._id },
-        { $inc: { attempts: 1 } }
-      );
-      return res.status(400).json({
-        message: 'That confirmation code is incorrect. Check the code and try again.',
+      return res.status(429).json({
+        message: 'A verification code was sent recently. Please wait before requesting another.',
       });
     }
 
-    const claimedCode = await RegistrationCode.findOneAndDelete({
-      _id: pending._id,
-      codeHash: pending.codeHash,
-      expiresAt: { $gt: new Date() },
-      attempts: { $lt: MAX_REGISTRATION_CODE_ATTEMPTS },
+    const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    await sendRegistrationOtp(mailer, email, pendingUser.displayName, otp);
+    pendingUser.otp = await bcrypt.hash(otp, OTP_HASH_ROUNDS);
+    pendingUser.otpExpires = new Date(Date.now() + OTP_TTL_MS);
+    pendingUser.otpAttempts = 0;
+    pendingUser.otpLastSentAt = new Date();
+    await pendingUser.save();
+    return res.status(202).json({
+      message: 'A new verification code was sent to your Gmail address.',
+      expiresInSeconds: OTP_TTL_MS / 1000,
     });
-    if (!claimedCode) {
-      return res.status(409).json({
-        message: 'This confirmation code has already been used. Request a new code.',
-      });
-    }
-
-    const firebaseAuth = getAuth(firebaseApp);
-    let firebaseUser;
-    let profileCreated = false;
-    try {
-      firebaseUser = await firebaseAuth.createUser({
-        email,
-        password,
-        displayName: claimedCode.displayName,
-        emailVerified: true,
-        disabled: false,
-      });
-      await User.create({
-        firebaseUid: firebaseUser.uid,
-        email,
-        displayName: claimedCode.displayName,
-        phoneNumber: claimedCode.phoneNumber || undefined,
-        role: 'member',
-        isActive: true,
-      });
-      profileCreated = true;
-      const customToken = await firebaseAuth.createCustomToken(firebaseUser.uid);
-      return res.status(201).json({
-        message: 'Your email is confirmed and your account is ready.',
-        customToken,
-      });
-    } catch (error) {
-      if (profileCreated && firebaseUser) {
-        await User.deleteOne({ firebaseUid: firebaseUser.uid }).catch(
-          (deleteError) => {
-            console.error('Unable to remove incomplete church registration.', deleteError);
-          }
-        );
-      }
-      if (firebaseUser) {
-        await firebaseAuth.deleteUser(firebaseUser.uid).catch((deleteError) => {
-          console.error('Unable to remove incomplete Firebase registration.', deleteError);
-        });
-      }
-      if (error.code === 'auth/email-already-exists' || error.code === 11000) {
-        return res.status(409).json({
-          message: 'An account already exists for this Gmail address. Please sign in.',
-        });
-      }
-      throw error;
-    }
   } catch (error) {
     return next(error);
   }
@@ -288,7 +326,8 @@ router.get('/me', authenticate, async (req, res, next) => {
       name: req.user.displayName,
       email: req.user.email,
       role: req.user.role,
-      secondaryDesignation: req.user.secondaryDesignation || null,
+      secondaryDesignations: req.user.secondaryDesignations || [],
+      secondaryDesignation: req.user.secondaryDesignations || [],
       phoneNumber: req.user.phoneNumber || null,
       birthDate: req.user.birthDate || null,
       groupId: beneficiary?.group?._id || null,
@@ -378,7 +417,7 @@ router.patch('/profile', authenticate, async (req, res, next) => {
   }
 });
 
-router.post('/register', verifyFirebaseIdToken, async (req, res, next) => {
+async function registerFirebaseAccount(req, res, next) {
   const firebaseUser = req.firebaseUser;
   const email =
     typeof firebaseUser.email === 'string' ? firebaseUser.email.trim().toLowerCase() : '';
@@ -397,8 +436,6 @@ router.post('/register', verifyFirebaseIdToken, async (req, res, next) => {
     });
   }
 
-  const firebaseName =
-    typeof firebaseUser.name === 'string' ? firebaseUser.name.trim() : '';
   const displayName = getDisplayName(firebaseUser);
   const profilePicture =
     typeof firebaseUser.picture === 'string' &&
@@ -408,26 +445,27 @@ router.post('/register', verifyFirebaseIdToken, async (req, res, next) => {
 
   try {
     const existingUser = await User.findOne({ firebaseUid: firebaseUser.uid })
-      .select('profilePhoto')
+      .select('displayName profilePicture profilePhoto isVerified +passwordHash')
       .lean();
+    if (existingUser?.passwordHash && !existingUser.isVerified) {
+      return res.status(403).json({
+        message: 'Verify your email with the code sent during registration before signing in.',
+      });
+    }
     const update = {
-      $set: { email },
+      $set: { email, isVerified: true },
       $setOnInsert: {
         firebaseUid: firebaseUser.uid,
         role: 'member',
       },
     };
-    if (firebaseName) {
-      update.$set.displayName = displayName;
-    } else {
-      update.$setOnInsert.displayName = displayName;
-    }
-    if (profilePicture && !existingUser?.profilePhoto?.publicId) {
-      if (existingUser) {
-        update.$set.profilePicture = profilePicture;
-      } else {
-        update.$setOnInsert.profilePicture = profilePicture;
-      }
+    update.$setOnInsert.displayName = displayName;
+    if (
+      profilePicture &&
+      !existingUser?.profilePicture &&
+      !existingUser?.profilePhoto?.publicId
+    ) {
+      update.$setOnInsert.profilePicture = profilePicture;
     }
 
     const user = await User.findOneAndUpdate(
@@ -463,6 +501,22 @@ router.post('/register', verifyFirebaseIdToken, async (req, res, next) => {
     }
     return next(error);
   }
+}
+
+router.post('/register', (req, res, next) => {
+  if (!req.get('authorization')) {
+    return registerManualAccount(req, res, next);
+  }
+  return verifyFirebaseIdToken(req, res, () =>
+    registerFirebaseAccount(req, res, next)
+  );
 });
 
+async function verifySmtpConnection() {
+  const mailer = createRegistrationMailer();
+  if (!mailer) throw new Error(getRegistrationMailerError());
+  await mailer.verify();
+}
+
 module.exports = router;
+module.exports.verifySmtpConnection = verifySmtpConnection;

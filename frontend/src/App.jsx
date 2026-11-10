@@ -4,10 +4,12 @@ import BeneficiaryDashboard from './components/beneficiary/BeneficiaryDashboard'
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LifeCoachQrScanner from './components/lifecoach/LifeCoachQrScanner';
 import PastorDashboard from './components/pastor/PastorDashboard';
+import FullLeaderboardsPage from './components/attendance/FullLeaderboardsPage';
 import { AuthProvider, getRoleHomePath, useAuth } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './context/ToastContext';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -26,12 +28,26 @@ function HomeRedirect() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
+      <ToastProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+              <Route
+                path="/scanner"
+                element={
+                  <DashboardWithToken>
+                    {(getIdToken) => (
+                      <LifeCoachQrScanner
+                        getIdToken={getIdToken}
+                        apiBaseUrl={apiBaseUrl}
+                      />
+                    )}
+                  </DashboardWithToken>
+                }
+              />
               <Route
                 path="/admin"
                 element={
@@ -59,13 +75,13 @@ export default function App() {
                 }
               />
             </Route>
-            <Route element={<ProtectedRoute allowedRoles={['pastor']} />}>
+            <Route element={<ProtectedRoute allowedRoles={['admin', 'member']} />}>
               <Route
-                path="/pastor"
+                path="/leaderboards"
                 element={
                   <DashboardWithToken>
                     {(getIdToken) => (
-                      <PastorDashboard
+                      <FullLeaderboardsPage
                         getIdToken={getIdToken}
                         apiBaseUrl={apiBaseUrl}
                       />
@@ -74,46 +90,13 @@ export default function App() {
                 }
               />
             </Route>
-            <Route
-              element={
-                <ProtectedRoute
-                  allowedRoles={['member']}
-                  requiredDesignation="Life Coach"
-                />
-              }
-            >
+            <Route element={<ProtectedRoute allowedRoles={['pastor']} />}>
               <Route
-                path="/scanner"
+                path="/pastor"
                 element={
                   <DashboardWithToken>
                     {(getIdToken) => (
-                      <LifeCoachQrScanner
-                        getIdToken={getIdToken}
-                        apiBaseUrl={apiBaseUrl}
-                      />
-                    )}
-                  </DashboardWithToken>
-                }
-              />
-              <Route
-                path="/lifecoach"
-                element={
-                  <DashboardWithToken>
-                    {(getIdToken) => (
-                      <LifeCoachQrScanner
-                        getIdToken={getIdToken}
-                        apiBaseUrl={apiBaseUrl}
-                      />
-                    )}
-                  </DashboardWithToken>
-                }
-              />
-              <Route
-                path="/lifecoach/attendance"
-                element={
-                  <DashboardWithToken>
-                    {(getIdToken) => (
-                      <LifeCoachQrScanner
+                      <PastorDashboard
                         getIdToken={getIdToken}
                         apiBaseUrl={apiBaseUrl}
                       />
@@ -164,9 +147,10 @@ export default function App() {
               />
             </Route>
             <Route path="*" element={<HomeRedirect />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

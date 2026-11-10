@@ -15,14 +15,18 @@ function pushPayload(notification) {
       type: notification.type,
       scope: notification.scope || 'announcement',
       entityId: notification.entityId ? String(notification.entityId) : '',
-      url: notification.scope === 'birthday' ? '/#birthday-celebrants' : '/#announcements',
+      url: notification.scope === 'birthday'
+        ? '/#birthday-celebrants'
+        : notification.scope === 'attendance' ? '/#dashboard' : '/#announcements',
     },
     ...(process.env.PUBLIC_APP_URL
       ? {
           webpush: {
             fcmOptions: {
               link: `${process.env.PUBLIC_APP_URL.replace(/\/$/, '')}/#${
-                notification.scope === 'birthday' ? 'birthday-celebrants' : 'announcements'
+                notification.scope === 'birthday'
+                  ? 'birthday-celebrants'
+                  : notification.scope === 'attendance' ? 'dashboard' : 'announcements'
               }`,
             },
           },

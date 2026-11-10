@@ -3,6 +3,8 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const app = require('./app');
 const AttendanceLog = require('./models/AttendanceLog');
+const User = require('./models/User');
+const { verifySmtpConnection } = require('./routes/authRoutes');
 const { initializeRealtime } = require('./realtime/realtime');
 
 const port = Number(process.env.PORT) || 5000;
@@ -13,6 +15,7 @@ if (!mongoUri) {
 }
 
 async function startServer() {
+  User.schema.set('autoIndex', false);
   await mongoose.connect(mongoUri);
   const collectionExists = await mongoose.connection.db
     .listCollections(
@@ -40,6 +43,34 @@ async function startServer() {
       name: 'user_attendance_date_unique',
     }
   );
+  const userCollectionExists = await mongoose.connection.db
+    .listCollections({ name: User.collection.name }, { nameOnly: true })
+    .hasNext();
+  const userIndexes = userCollectionExists
+    ? await User.collection.indexes()
+    : [];
+  const firebaseUidIndex = userIndexes.find(
+    (index) => index.key?.firebaseUid === 1
+  );
+  if (firebaseUidIndex && (!firebaseUidIndex.unique || !firebaseUidIndex.sparse)) {
+    await User.collection.dropIndex(firebaseUidIndex.name);
+  }
+  await User.collection.createIndex(
+    { firebaseUid: 1 },
+    { unique: true, sparse: true, name: 'firebaseUid_1' }
+  );
+  await User.collection.createIndex(
+    { email: 1 },
+    { unique: true, name: 'email_1' }
+  );
+
+  try {
+    await verifySmtpConnection();
+    console.log('SMTP connection verified successfully.');
+  } catch (error) {
+    console.error('SMTP connection verification failed:', error.message);
+  }
+
   const server = app.listen(port, '127.0.0.1', () => {
     console.log(`The Life Builder Church API is listening on http://127.0.0.1:${port}`);
   });

@@ -4,39 +4,57 @@ const { authenticate, authorizeRoles } = require('../middleware/authMiddleware')
 const Beneficiary = require('../models/Beneficiary');
 const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
+const {
+  SECONDARY_DESIGNATIONS,
+  getDesignations,
+} = require('../utils/designations');
 
 const router = express.Router();
 const adminOnly = [authenticate, authorizeRoles('admin')];
 const SYSTEM_ROLES = ['admin', 'pastor', 'member'];
-const SECONDARY_DESIGNATIONS = [
-  'KSP leader',
-  'Youth Leader',
-  'Music Team Leader',
-  'Small Group Leader',
-  'Tech Team Leader',
-  'Creatives Leader',
-  'Admin Team Leader',
-  'Life Coach',
-  'Worship Ministry Member',
-  'Media Team Member',
-];
-
 function validObjectId(value) {
   return mongoose.isValidObjectId(value);
 }
 
 router.get('/users', ...adminOnly, async (req, res, next) => {
   try {
-    await Promise.all([
-      User.collection.updateMany(
-        { role: 'life_coach' },
-        { $set: { role: 'member', secondaryDesignation: 'Life Coach' } }
-      ),
-      User.collection.updateMany(
-        { role: 'beneficiary' },
-        { $set: { role: 'member', secondaryDesignation: null } }
-      ),
-    ]);
+    const legacyUsers = await User.collection
+      .find({
+        $or: [
+          { secondaryDesignation: { $exists: true } },
+          { secondaryDesignations: { $type: 'string' } },
+          { role: { $in: ['life_coach', 'beneficiary'] } },
+        ],
+      })
+      .project({ role: 1, secondaryDesignation: 1, secondaryDesignations: 1 })
+      .toArray();
+    if (legacyUsers.length) {
+      await User.collection.bulkWrite(
+        legacyUsers.map((legacyUser) => {
+          const existingDesignations = Array.isArray(legacyUser.secondaryDesignations)
+            ? legacyUser.secondaryDesignations
+            : legacyUser.secondaryDesignation;
+          const secondaryDesignations = getDesignations(existingDesignations);
+          if (legacyUser.role === 'life_coach' && !secondaryDesignations.includes('KSP Leader')) {
+            secondaryDesignations.push('KSP Leader');
+          }
+          return {
+            updateOne: {
+              filter: { _id: legacyUser._id },
+              update: {
+                $set: {
+                  role: ['life_coach', 'beneficiary'].includes(legacyUser.role)
+                    ? 'member'
+                    : legacyUser.role,
+                  secondaryDesignations,
+                },
+                $unset: { secondaryDesignation: '' },
+              },
+            },
+          };
+        })
+      );
+    }
 
     const legacyCoachGroups = await LifeCoachGroup.collection
       .find({ lifeCoach: { $exists: true, $ne: null } })
@@ -73,7 +91,7 @@ router.get('/users', ...adminOnly, async (req, res, next) => {
     const [users, memberProfiles] = await Promise.all([
       User.find({})
         .select(
-          'displayName email phoneNumber role secondaryDesignation profilePicture profilePhoto birthDate isActive'
+          'displayName email phoneNumber role secondaryDesignations profilePicture profilePhoto birthDate isActive'
         )
         .sort({ displayName: 1 })
         .lean(),
@@ -96,9 +114,8 @@ router.get('/users', ...adminOnly, async (req, res, next) => {
           user.role === 'life_coach' || user.role === 'beneficiary'
             ? 'member'
             : user.role,
-        secondaryDesignation:
-          user.secondaryDesignation ||
-          (user.role === 'life_coach' ? 'Life Coach' : null),
+        secondaryDesignations: getDesignations(user),
+        secondaryDesignation: getDesignations(user),
         beneficiary: profileByUser.get(String(user._id)) || null,
       })),
     });
@@ -147,10 +164,12 @@ router.patch('/users/:userId/role', ...adminOnly, async (req, res, next) => {
     const wasLegacyLifeCoach = targetUser.role === 'life_coach';
     targetUser.role = role;
     if (role === 'member' && wasLegacyLifeCoach) {
-      targetUser.secondaryDesignation = 'Life Coach';
+      targetUser.secondaryDesignations = ['KSP Leader'];
+    }
+    if (role === 'pastor') {
+      targetUser.secondaryDesignations = [];
     }
     if (role !== 'member') {
-      targetUser.secondaryDesignation = null;
       await Beneficiary.deleteOne({ user: targetUser._id });
     }
     await targetUser.save();
@@ -161,7 +180,8 @@ router.patch('/users/:userId/role', ...adminOnly, async (req, res, next) => {
         displayName: targetUser.displayName,
         email: targetUser.email,
         role: targetUser.role,
-        secondaryDesignation: targetUser.secondaryDesignation,
+        secondaryDesignations: targetUser.secondaryDesignations,
+        secondaryDesignation: targetUser.secondaryDesignations,
       },
     });
   } catch (error) {
@@ -174,53 +194,72 @@ router.patch(
   ...adminOnly,
   async (req, res, next) => {
     const { userId } = req.params;
-    const rawDesignation = (req.body || {}).secondaryDesignation;
-    const secondaryDesignation =
-      rawDesignation === null
-        ? null
-        : typeof rawDesignation === 'string'
-          ? rawDesignation.trim()
+    const rawDesignations = (req.body || {}).secondaryDesignations ??
+      (req.body || {}).secondaryDesignation;
+    const secondaryDesignations = rawDesignations === null
+      ? []
+      : Array.isArray(rawDesignations)
+        ? rawDesignations.map((designation) =>
+            typeof designation === 'string' ? designation.trim() : ''
+          )
+        : typeof rawDesignations === 'string'
+          ? rawDesignations.trim() ? [rawDesignations.trim()] : []
           : undefined;
 
     if (!validObjectId(userId)) {
       return res.status(400).json({ message: 'userId must be a valid user ID.' });
     }
-    if (secondaryDesignation === undefined) {
+    if (secondaryDesignations === undefined) {
       return res.status(400).json({
-        message: 'secondaryDesignation must be a string or null.',
+        message: 'secondaryDesignations must be an array of designation strings.',
       });
     }
-    if (
-      secondaryDesignation !== null &&
-      !SECONDARY_DESIGNATIONS.includes(secondaryDesignation)
-    ) {
+    if (new Set(secondaryDesignations).size !== secondaryDesignations.length) {
+      return res.status(400).json({ message: 'Duplicate secondary designations are not allowed.' });
+    }
+    if (secondaryDesignations.some((designation) => !SECONDARY_DESIGNATIONS.includes(designation))) {
       return res.status(400).json({
-        message: `secondaryDesignation must be one of: ${SECONDARY_DESIGNATIONS.join(', ')}.`,
+        message: `secondaryDesignations must be one of: ${SECONDARY_DESIGNATIONS.join(', ')}.`,
       });
     }
 
     try {
-      const user = await User.findById(userId);
-      if (!user) {
+      const currentUser = await User.findById(userId).select('_id role');
+      if (!currentUser) {
         return res.status(404).json({ message: 'User not found.' });
       }
-      if (user.role !== 'member' && secondaryDesignation !== null) {
+      if (!['member', 'admin'].includes(currentUser.role) && secondaryDesignations.length > 0) {
         return res.status(409).json({
-          message: 'Secondary designations can only be assigned to members.',
+          message: 'Secondary designations can only be assigned to members or admins.',
         });
       }
 
-      user.secondaryDesignation = secondaryDesignation;
-      await user.save();
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { $set: { secondaryDesignations } },
+        { new: true, runValidators: true }
+      )
+        .select('_id displayName email role secondaryDesignations profilePicture profilePhoto phoneNumber birthDate')
+        .lean();
       return res.json({
         message: 'Secondary designation updated.',
         user: {
           id: user._id,
+          _id: user._id,
+          displayName: user.displayName,
+          email: user.email,
           role: user.role,
-          secondaryDesignation: user.secondaryDesignation,
+          secondaryDesignations: getDesignations(user),
+          secondaryDesignation: getDesignations(user),
+          profilePicture: user.profilePicture || user.profilePhoto?.url || null,
+          phoneNumber: user.phoneNumber || null,
+          birthDate: user.birthDate || null,
         },
       });
     } catch (error) {
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({ message: error.message });
+      }
       return next(error);
     }
   }

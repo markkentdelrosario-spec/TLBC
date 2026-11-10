@@ -76,8 +76,9 @@ async function seedEmulatorAdmin() {
   user.email = TEST_EMAIL;
   user.displayName = 'Local Test Admin';
   user.role = 'admin';
-  user.secondaryDesignation = null;
+  user.secondaryDesignations = [];
   user.isActive = true;
+  user.isVerified = true;
   await user.save();
 
   console.log('Created the local Firebase Auth Emulator admin account.');

@@ -3,7 +3,8 @@ import { apiRequest, getErrorMessage } from '../../services/api';
 import '../../styles/print.css';
 import ImageUpload from '../shared/ImageUpload';
 import ChurchDashboardShell from '../layout/ChurchDashboardShell';
-import { downloadCsv } from '../../utils/downloadCsv';
+import FilePreviewModal from '../shared/FilePreviewModal';
+import { useAuth } from '../../context/AuthContext';
 
 const inputClass =
   'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100';
@@ -44,6 +45,7 @@ export default function PastorDashboard({
   getIdToken,
   apiBaseUrl = '/api',
 }) {
+  const { user } = useAuth();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState(todayString());
   const [summary, setSummary] = useState(null);
@@ -57,6 +59,7 @@ export default function PastorDashboard({
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [filePreview, setFilePreview] = useState(null);
   const [announcement, setAnnouncement] = useState({
     title: '',
     body: '',
@@ -149,14 +152,9 @@ export default function PastorDashboard({
     }
   }
 
-  function printSundayReport() {
-    if (!sundayReport) return;
-    window.print();
-  }
-
-  function downloadMonthlyCsv() {
+  function getMonthlyExportRows() {
     if (!monthlyAnalytics) return;
-    downloadCsv(`tlbc-attendance-${selectedMonth}.csv`, [
+    return [
       ['Date', 'Group 1', 'Group 2', 'Group 3', 'Other', 'Total'],
       ...monthlyAnalytics.sundays.map((sunday) => [
         sunday.date,
@@ -179,10 +177,31 @@ export default function PastorDashboard({
         monthlyAnalytics.unassignedTotal || 0,
         monthlyAnalytics.totalAttendance,
       ],
-    ]);
+    ];
   }
 
-  function downloadSundayCsv() {
+  function openMonthlyPreview(format) {
+    const rows = getMonthlyExportRows();
+    if (!rows) return;
+    setFilePreview({
+      format,
+      filename: `tlbc-attendance-${selectedMonth}.${format}`,
+      title: `Monthly attendance report · ${selectedMonth}`,
+      rows,
+      metadata: {
+        preparedBy: [user?.name || user?.displayName, user?.email].filter(Boolean).join(' · ') || 'Pastor',
+        summary: [
+          { label: 'Total attendance', value: monthlyAnalytics.totalAttendance ?? 0 },
+          { label: 'Sunday services', value: monthlyAnalytics.sundays.length },
+          { label: 'Group 1', value: monthlyAnalytics.groupTotals.find((group) => group.groupNumber === 1)?.attendanceCount || 0 },
+          { label: 'Group 2', value: monthlyAnalytics.groupTotals.find((group) => group.groupNumber === 2)?.attendanceCount || 0 },
+          { label: 'Group 3', value: monthlyAnalytics.groupTotals.find((group) => group.groupNumber === 3)?.attendanceCount || 0 },
+        ],
+      },
+    });
+  }
+
+  function getSundayExportRows() {
     if (!sundayReport) return;
     const groups = sundayReport.groups.flatMap((group) =>
       group.attendees.map((attendee) => [
@@ -204,11 +223,30 @@ export default function PastorDashboard({
         attendee.serviceName || '',
       ]
     );
-    downloadCsv(`tlbc-sunday-report-${sundayReport.date}.csv`, [
+    return [
       ['Date', 'Group', 'Member', 'Designation', 'Check-in time', 'Service'],
       ...groups,
       ...otherAttendees,
-    ]);
+    ];
+  }
+
+  function openSundayPreview(format) {
+    const rows = getSundayExportRows();
+    if (!rows) return;
+    setFilePreview({
+      format,
+      filename: `tlbc-sunday-report-${sundayReport.date}.${format}`,
+      title: `Sunday attendance report · ${formatReportDate(sundayReport.date)}`,
+      rows,
+      metadata: {
+        preparedBy: [user?.name || user?.displayName, user?.email].filter(Boolean).join(' · ') || 'Pastor',
+        summary: [
+          { label: 'Total attendance', value: sundayReport.totalAttendance ?? rows.length - 1 },
+          { label: 'Assigned groups', value: sundayReport.groups.length },
+          { label: 'Other attendees', value: sundayReport.unassignedAttendees?.length || 0 },
+        ],
+      },
+    });
   }
 
   async function createAnnouncement(event) {
@@ -370,10 +408,10 @@ export default function PastorDashboard({
             <button
               type="button"
               className="no-print inline-flex min-h-11 items-center justify-center rounded-lg border border-violet-200 px-4 py-2 text-sm font-semibold text-violet-700 transition hover:bg-violet-50 disabled:opacity-50"
-              onClick={downloadMonthlyCsv}
+              onClick={() => openMonthlyPreview('csv')}
               disabled={!monthlyAnalytics || monthlyLoading}
             >
-              Download CSV
+              Preview CSV
             </button>
           </div>
 
@@ -496,18 +534,18 @@ export default function PastorDashboard({
             <button
               type="button"
               className="no-print inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={printSundayReport}
+              onClick={() => openSundayPreview('pdf')}
               disabled={!sundayReport}
             >
-              Print / Save PDF
+              Preview PDF
             </button>
             <button
               type="button"
               className="no-print inline-flex min-h-11 items-center justify-center rounded-lg border border-violet-200 px-5 py-2.5 text-sm font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={downloadSundayCsv}
+              onClick={() => openSundayPreview('csv')}
               disabled={!sundayReport}
             >
-              Download CSV
+              Preview CSV
             </button>
           </form>
         </section>
@@ -700,6 +738,16 @@ export default function PastorDashboard({
         </section>
       </div>
     </div>
+    <FilePreviewModal
+      open={Boolean(filePreview)}
+      onClose={() => setFilePreview(null)}
+      title={filePreview?.title || ''}
+      filename={filePreview?.filename || ''}
+      format={filePreview?.format}
+      rows={filePreview?.rows || []}
+      metadata={filePreview?.metadata}
+      onDownload={() => setNotice('Report downloaded.')}
+    />
     </ChurchDashboardShell>
   );
 }
