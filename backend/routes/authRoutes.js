@@ -419,6 +419,11 @@ router.patch('/profile', authenticate, async (req, res, next) => {
 
 async function registerFirebaseAccount(req, res, next) {
   const firebaseUser = req.firebaseUser;
+  if (!firebaseUser || typeof firebaseUser !== 'object') {
+    return res.status(401).json({
+      message: 'A valid Firebase ID token is required.',
+    });
+  }
   const email =
     typeof firebaseUser.email === 'string' ? firebaseUser.email.trim().toLowerCase() : '';
 
@@ -503,14 +508,17 @@ async function registerFirebaseAccount(req, res, next) {
   }
 }
 
-router.post('/register', (req, res, next) => {
-  if (!req.get('authorization')) {
-    return registerManualAccount(req, res, next);
-  }
-  return verifyFirebaseIdToken(req, res, () =>
-    registerFirebaseAccount(req, res, next)
-  );
-});
+router.post(
+  '/register',
+  (req, res, next) => {
+    if (!req.get('authorization')) {
+      return registerManualAccount(req, res, next);
+    }
+    return next();
+  },
+  verifyFirebaseIdToken,
+  (req, res, next) => registerFirebaseAccount(req, res, next)
+);
 
 async function verifySmtpConnection() {
   const mailer = createRegistrationMailer();
