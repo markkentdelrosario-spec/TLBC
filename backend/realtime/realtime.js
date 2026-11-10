@@ -2,15 +2,14 @@ const { Server } = require('socket.io');
 const { getAuth } = require('firebase-admin/auth');
 const firebaseApp = require('../config/firebaseAdmin');
 const User = require('../models/User');
+const { getAllowedOrigins } = require('../config/cors');
 
 let io;
 
 function initializeRealtime(server) {
   io = new Server(server, {
     cors: {
-      origin: process.env.FRONTEND_ORIGIN
-        ? process.env.FRONTEND_ORIGIN.split(',').map((origin) => origin.trim())
-        : false,
+      origin: getAllowedOrigins(),
     },
   });
 

@@ -8,10 +8,9 @@ import FullLeaderboardsPage from './components/attendance/FullLeaderboardsPage';
 import { AuthProvider, getRoleHomePath, useAuth } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
+import { apiBaseUrl } from './config/api';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 
 function HomeRedirect() {
   const { user, loading } = useAuth();

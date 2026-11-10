@@ -18,10 +18,10 @@ import {
   signOut,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
+import { apiBaseUrl } from '../config/api';
 import { apiRequest, getErrorMessage } from '../services/api';
 
 const AuthContext = createContext(null);
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 
 async function loadMongoProfile(firebaseUser) {
   const getIdToken = () => firebaseUser.getIdToken();

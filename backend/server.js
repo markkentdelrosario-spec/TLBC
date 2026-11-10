@@ -71,8 +71,8 @@ async function startServer() {
     console.error('SMTP connection verification failed:', error.message);
   }
 
-  const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`The Life Builder Church API is listening on http://127.0.0.1:${port}`);
+  const server = app.listen(port, '0.0.0.0', () => {
+    console.log(`The Life Builder Church API is listening on port ${port}`);
   });
   initializeRealtime(server);
 

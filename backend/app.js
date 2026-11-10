@@ -1,9 +1,20 @@
 const express = require('express');
+const cors = require('cors');
 const apiRoutes = require('./routes');
+const { getAllowedOrigins } = require('./config/cors');
 
 const app = express();
 
 app.disable('x-powered-by');
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || getAllowedOrigins().includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+  },
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use('/api', apiRoutes);
 

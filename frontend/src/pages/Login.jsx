@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { getRoleHomePath, useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { apiBaseUrl } from '../config/api';
 import { LOCAL_WELCOME_SLIDES } from '../utils/localSlideshow';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 const LOGIN_TAGLINE = 'YOUR FAITH JOURNEY STARTS HERE.';
 const inputClass =
   'mt-1.5 min-h-12 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-800 focus:ring-2 focus:ring-teal-100';
