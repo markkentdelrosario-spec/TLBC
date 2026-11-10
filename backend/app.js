@@ -4,11 +4,13 @@ const apiRoutes = require('./routes');
 const { getAllowedOrigins } = require('./config/cors');
 
 const app = express();
+const allowedOrigins = getAllowedOrigins();
 
 app.disable('x-powered-by');
 app.use(cors({
+  credentials: true,
   origin(origin, callback) {
-    if (!origin || getAllowedOrigins().includes(origin)) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
     }
