@@ -8,7 +8,13 @@ function getAllowedOrigins() {
     .map((origin) => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
 
-  return [...new Set(['http://localhost:5173', ...configuredOrigins])];
+  return [
+    ...new Set([
+      'http://localhost:5173',
+      'https://tlbc-frontend.onrender.com',
+      ...configuredOrigins,
+    ]),
+  ];
 }
 
 module.exports = { getAllowedOrigins };
