@@ -134,7 +134,7 @@ export default function ChurchDashboardShell({
   apiBaseUrl = '/api',
   getIdToken,
 }) {
-  const { user, logout, refreshProfile } = useAuth();
+  const { user, firebaseUser, logout, refreshProfile, changePassword } = useAuth();
   const { showToast } = useToast();
   const settingsRef = useRef(null);
   const notificationsRef = useRef(null);
@@ -187,6 +187,12 @@ export default function ChurchDashboardShell({
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileNotice, setProfileNotice] = useState('');
+  const [passwordDraft, setPasswordDraft] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [passwordBusy, setPasswordBusy] = useState(false);
 
   useEffect(() => {
     if (actionError) showToast(actionError, 'error');
@@ -803,6 +809,41 @@ export default function ChurchDashboardShell({
       setProfileError(getErrorMessage(error));
     } finally {
       setProfileBusy(false);
+    }
+  }
+
+  async function savePassword(event) {
+    event.preventDefault();
+    setProfileError('');
+    setProfileNotice('');
+    if (passwordDraft.newPassword !== passwordDraft.confirmPassword) {
+      setProfileError('Your new password and confirmation do not match.');
+      return;
+    }
+
+    setPasswordBusy(true);
+    try {
+      await changePassword(
+        passwordDraft.currentPassword,
+        passwordDraft.newPassword
+      );
+      setPasswordDraft({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setProfileNotice('Your password was updated.');
+    } catch (error) {
+      const messages = {
+        'auth/invalid-credential': 'Your current password is incorrect.',
+        'auth/wrong-password': 'Your current password is incorrect.',
+        'auth/requires-recent-login': 'Please sign in again before changing your password.',
+        'auth/weak-password': 'Choose a stronger password with at least 8 characters.',
+        'auth/too-many-requests': 'Too many attempts. Please wait and try again.',
+      };
+      setProfileError(messages[error?.code] || getErrorMessage(error));
+    } finally {
+      setPasswordBusy(false);
     }
   }
 
@@ -1686,7 +1727,7 @@ export default function ChurchDashboardShell({
               role="dialog"
               aria-modal="true"
               aria-labelledby="edit-profile-title"
-              className="flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/30 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
+              className="flex max-h-[calc(100dvh-1rem)] w-full max-w-lg flex-col overflow-y-auto rounded-3xl border border-white/30 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:max-h-[calc(100dvh-2rem)]"
             >
               <header className="flex shrink-0 items-center justify-between bg-emerald-950 px-4 py-3 text-white sm:px-5">
                 <div>
@@ -1781,6 +1822,63 @@ export default function ChurchDashboardShell({
                   </button>
                 </div>
               </form>
+              <section className="border-t border-slate-200 px-3 py-4 sm:px-5 dark:border-slate-700">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Update password</h3>
+                {firebaseUser?.providerData.some(({ providerId }) => providerId === 'password') ? (
+                  <form className="mt-3 space-y-3" onSubmit={savePassword}>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      Current password
+                      <input
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        value={passwordDraft.currentPassword}
+                        onChange={(event) => setPasswordDraft((draft) => ({ ...draft, currentPassword: event.target.value }))}
+                        className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      New password
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        minLength={8}
+                        maxLength={128}
+                        required
+                        value={passwordDraft.newPassword}
+                        onChange={(event) => setPasswordDraft((draft) => ({ ...draft, newPassword: event.target.value }))}
+                        className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      Confirm new password
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        minLength={8}
+                        maxLength={128}
+                        required
+                        value={passwordDraft.confirmPassword}
+                        onChange={(event) => setPasswordDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))}
+                        className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
+                      />
+                    </label>
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={passwordBusy}
+                        className="min-h-10 rounded-xl bg-emerald-900 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {passwordBusy ? 'Updating…' : 'Update password'}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    This account uses a social sign-in provider and does not have a church-site password to update.
+                  </p>
+                )}
+              </section>
             </section>
           </div>
         )}

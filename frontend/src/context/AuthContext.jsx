@@ -8,14 +8,17 @@ import {
   useState,
 } from 'react';
 import {
+  EmailAuthProvider,
   FacebookAuthProvider,
   GoogleAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   sendPasswordResetEmail,
   signInWithCustomToken,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updatePassword,
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { apiBaseUrl } from '../config/api';
@@ -157,6 +160,33 @@ export function AuthProvider({ children }) {
     if (!auth) throw firebaseSetupError();
     await sendPasswordResetEmail(auth, email);
   }, []);
+  const changePassword = useCallback(
+    async (currentPassword, newPassword) => {
+      if (!auth) throw firebaseSetupError();
+      if (!firebaseUser?.email) throw new Error('You are not signed in.');
+      if (!firebaseUser.providerData.some(({ providerId }) => providerId === 'password')) {
+        throw new Error('This account does not use an email and password sign-in.');
+      }
+      if (typeof currentPassword !== 'string' || !currentPassword) {
+        throw new Error('Enter your current password.');
+      }
+      if (
+        typeof newPassword !== 'string' ||
+        newPassword.length < 8 ||
+        newPassword.length > 128
+      ) {
+        throw new Error('Your new password must be between 8 and 128 characters.');
+      }
+
+      const credential = EmailAuthProvider.credential(
+        firebaseUser.email,
+        currentPassword
+      );
+      await reauthenticateWithCredential(firebaseUser, credential);
+      await updatePassword(firebaseUser, newPassword);
+    },
+    [firebaseUser]
+  );
 
   const finishCustomTokenSignIn = useCallback(
     async (customToken) => {
@@ -198,6 +228,7 @@ export function AuthProvider({ children }) {
       updateUserProfile,
       loginWithEmail,
       resetPassword,
+      changePassword,
       finishCustomTokenSignIn,
       loginWithGoogle,
       loginWithFacebook,
@@ -205,6 +236,7 @@ export function AuthProvider({ children }) {
     }),
     [
       authError,
+      changePassword,
       firebaseUser,
       getIdToken,
       loading,
