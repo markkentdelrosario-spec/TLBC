@@ -41,4 +41,13 @@ function hasDesignation(user, designation) {
   );
 }
 
-module.exports = { SECONDARY_DESIGNATIONS, getDesignations, hasDesignation };
+function hasLeadershipDesignation(user) {
+  return getDesignations(user).some((designation) => designation.endsWith('Leader'));
+}
+
+module.exports = {
+  SECONDARY_DESIGNATIONS,
+  getDesignations,
+  hasDesignation,
+  hasLeadershipDesignation,
+};

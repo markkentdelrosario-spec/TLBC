@@ -4,7 +4,11 @@ import { io } from 'socket.io-client';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { apiRequest, getErrorMessage } from '../../services/api';
-import { getDesignations, hasDesignation } from '../../utils/designations';
+import {
+  getDesignations,
+  hasDesignation,
+  hasLeadershipDesignation,
+} from '../../utils/designations';
 import { LOCAL_WELCOME_SLIDES } from '../../utils/localSlideshow';
 import {
   hasRegisteredPushToken,
@@ -129,12 +133,58 @@ function monthDay(date) {
   return new Date(date).getUTCDate();
 }
 
+function VerseOfDayCard({
+  id,
+  className = '',
+  verse,
+  verseError,
+  verseReaction,
+  onToggleReaction,
+}) {
+  return (
+    <section
+      id={id}
+      className={`relative overflow-hidden rounded-2xl bg-cover bg-center p-5 text-center text-white shadow-sm ${className}`}
+      style={{
+        backgroundImage:
+          "linear-gradient(180deg, rgba(27,35,51,.55), rgba(27,35,51,.84)), url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80')",
+      }}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/75">Verse of the day</p>
+      {verse ? (
+        <>
+          <p className="mt-4 font-serif text-lg leading-7 text-white sm:text-xl">
+            “{verse.text?.trim()}”
+          </p>
+          <p className="mt-3 text-xs font-bold tracking-wide text-white/90">{verse.reference}</p>
+          <button
+            type="button"
+            onClick={onToggleReaction}
+            aria-label={verseReaction.reacted ? 'Unlike verse of the day' : 'Like verse of the day'}
+            aria-pressed={verseReaction.reacted}
+            className={`mt-4 inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition ${
+              verseReaction.reacted
+                ? 'border-rose-200/50 bg-rose-500/90 text-white'
+                : 'border-white/30 bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            <span aria-hidden="true" className="text-sm">{verseReaction.reacted ? '♥' : '♡'}</span>
+            {verseReaction.reactionCount}
+          </button>
+        </>
+      ) : (
+        <p className="mt-3 text-xs leading-5 text-white/80">{verseError || 'Loading today’s scripture…'}</p>
+      )}
+    </section>
+  );
+}
+
 export default function ChurchDashboardShell({
   children,
   apiBaseUrl = '/api',
   getIdToken,
 }) {
-  const { user, firebaseUser, logout, refreshProfile, changePassword } = useAuth();
+  const { user, firebaseUser, logout, refreshProfile, changePassword, setPassword } = useAuth();
   const { showToast } = useToast();
   const settingsRef = useRef(null);
   const notificationsRef = useRef(null);
@@ -167,6 +217,10 @@ export default function ChurchDashboardShell({
   const [media, setMedia] = useState([]);
   const [leadershipGroup, setLeadershipGroup] = useState(null);
   const [groupError, setGroupError] = useState('');
+  const [groupMemberEmail, setGroupMemberEmail] = useState('');
+  const [groupMemberBusy, setGroupMemberBusy] = useState(false);
+  const [groupMemberMessage, setGroupMemberMessage] = useState('');
+  const [groupMemberError, setGroupMemberError] = useState('');
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
@@ -642,6 +696,8 @@ export default function ChurchDashboardShell({
   const photo = user?.profilePicture;
   const designationText = getDesignations(user).join(', ');
   const isLeader = user?.role === 'member' && getDesignations(user).length > 0;
+  const canAddGroupMembers =
+    user?.role === 'member' && hasLeadershipDesignation(user);
   const isKspLeader =
     user?.role === 'member' &&
     hasDesignation(user, 'KSP Leader');
@@ -816,6 +872,8 @@ export default function ChurchDashboardShell({
     event.preventDefault();
     setProfileError('');
     setProfileNotice('');
+    const isSettingPassword =
+      !firebaseUser?.providerData.some(({ providerId }) => providerId === 'password');
     if (passwordDraft.newPassword !== passwordDraft.confirmPassword) {
       setProfileError('Your new password and confirmation do not match.');
       return;
@@ -823,16 +881,21 @@ export default function ChurchDashboardShell({
 
     setPasswordBusy(true);
     try {
-      await changePassword(
-        passwordDraft.currentPassword,
-        passwordDraft.newPassword
-      );
+      if (firebaseUser?.providerData.some(({ providerId }) => providerId === 'password')) {
+        await changePassword(passwordDraft.currentPassword, passwordDraft.newPassword);
+      } else {
+        await setPassword(passwordDraft.newPassword);
+      }
       setPasswordDraft({
         currentPassword: '',
         newPassword: '',
         confirmPassword: '',
       });
-      setProfileNotice('Your password was updated.');
+      setProfileNotice(
+        isSettingPassword
+          ? 'Your password was set. You can now sign in with your email and password.'
+          : 'Your password was updated.'
+      );
     } catch (error) {
       const messages = {
         'auth/invalid-credential': 'Your current password is incorrect.',
@@ -844,6 +907,32 @@ export default function ChurchDashboardShell({
       setProfileError(messages[error?.code] || getErrorMessage(error));
     } finally {
       setPasswordBusy(false);
+    }
+  }
+
+  async function addGroupMember(event) {
+    event.preventDefault();
+    setGroupMemberBusy(true);
+    setGroupMemberError('');
+    setGroupMemberMessage('');
+    try {
+      const result = await apiRequest('/groups/members', {
+        getIdToken,
+        apiBaseUrl,
+        method: 'POST',
+        body: JSON.stringify({ email: groupMemberEmail.trim() }),
+      });
+      const updatedGroup = await apiRequest('/groups/my-group', {
+        getIdToken,
+        apiBaseUrl,
+      });
+      setLeadershipGroup(updatedGroup);
+      setGroupMemberEmail('');
+      setGroupMemberMessage(result.message);
+    } catch (error) {
+      setGroupMemberError(getErrorMessage(error));
+    } finally {
+      setGroupMemberBusy(false);
     }
   }
 
@@ -1073,7 +1162,7 @@ export default function ChurchDashboardShell({
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               />
             </label>
-            {user?.role === 'admin' && (
+            {canAddGroupMembers && (
               <Link
                 to="/scanner"
                 aria-label="Open QR attendance scanner"
@@ -1518,6 +1607,15 @@ export default function ChurchDashboardShell({
             </section>
           )}
 
+          <VerseOfDayCard
+            id="verse-of-day-mobile"
+            className="mb-6 xl:hidden"
+            verse={verse}
+            verseError={verseError}
+            verseReaction={verseReaction}
+            onToggleReaction={toggleVerseReaction}
+          />
+
           <section id="bible-reader" className="mb-6 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
@@ -1691,6 +1789,33 @@ export default function ChurchDashboardShell({
                   </tbody>
                 </table>
               </div>
+              {canAddGroupMembers && (
+                <form onSubmit={addGroupMember} className="mt-4 border-t border-slate-100 pt-4">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Add a registered member by email
+                    <span className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="email"
+                        required
+                        maxLength={254}
+                        value={groupMemberEmail}
+                        onChange={(event) => setGroupMemberEmail(event.target.value)}
+                        className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-violet-400"
+                        placeholder="member@example.com"
+                      />
+                      <button
+                        type="submit"
+                        disabled={groupMemberBusy}
+                        className="min-h-10 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {groupMemberBusy ? 'Adding…' : 'Add to group'}
+                      </button>
+                    </span>
+                  </label>
+                  {groupMemberError && <p role="alert" className="mt-2 text-sm text-red-700">{groupMemberError}</p>}
+                  {groupMemberMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{groupMemberMessage}</p>}
+                </form>
+              )}
             </section>
           )}
           {isKspLeader && (
@@ -1823,9 +1948,13 @@ export default function ChurchDashboardShell({
                 </div>
               </form>
               <section className="border-t border-slate-200 px-3 py-4 sm:px-5 dark:border-slate-700">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Update password</h3>
-                {firebaseUser?.providerData.some(({ providerId }) => providerId === 'password') ? (
-                  <form className="mt-3 space-y-3" onSubmit={savePassword}>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  {firebaseUser?.providerData.some(({ providerId }) => providerId === 'password')
+                    ? 'Update password'
+                    : 'Set password'}
+                </h3>
+                <form className="mt-3 space-y-3" onSubmit={savePassword}>
+                  {firebaseUser?.providerData.some(({ providerId }) => providerId === 'password') && (
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
                       Current password
                       <input
@@ -1837,7 +1966,8 @@ export default function ChurchDashboardShell({
                         className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                       />
                     </label>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  )}
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
                       New password
                       <input
                         type="password"
@@ -1849,8 +1979,8 @@ export default function ChurchDashboardShell({
                         onChange={(event) => setPasswordDraft((draft) => ({ ...draft, newPassword: event.target.value }))}
                         className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                       />
-                    </label>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  </label>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-200">
                       Confirm new password
                       <input
                         type="password"
@@ -1862,22 +1992,21 @@ export default function ChurchDashboardShell({
                         onChange={(event) => setPasswordDraft((draft) => ({ ...draft, confirmPassword: event.target.value }))}
                         className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
                       />
-                    </label>
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={passwordBusy}
-                        className="min-h-10 rounded-xl bg-emerald-900 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {passwordBusy ? 'Updating…' : 'Update password'}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                    This account uses a social sign-in provider and does not have a church-site password to update.
-                  </p>
-                )}
+                  </label>
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={passwordBusy}
+                      className="min-h-10 rounded-xl bg-emerald-900 px-5 py-2 text-sm font-bold text-white transition hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {passwordBusy
+                        ? 'Saving…'
+                        : firebaseUser?.providerData.some(({ providerId }) => providerId === 'password')
+                          ? 'Update password'
+                          : 'Set password'}
+                    </button>
+                  </div>
+                </form>
               </section>
             </section>
           </div>
@@ -1942,40 +2071,13 @@ export default function ChurchDashboardShell({
             </Link>
           ) : null}
 
-          <section
+          <VerseOfDayCard
             id="verse-of-day"
-            className="relative overflow-hidden rounded-2xl bg-cover bg-center p-5 text-center text-white shadow-sm"
-            style={{
-              backgroundImage:
-                "linear-gradient(180deg, rgba(27,35,51,.55), rgba(27,35,51,.84)), url('https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80')",
-            }}
-          >
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/75">Verse of the day</p>
-            {verse ? (
-              <>
-                <p className="mt-4 font-serif text-lg leading-7 text-white sm:text-xl">
-                  “{verse.text?.trim()}”
-                </p>
-                <p className="mt-3 text-xs font-bold tracking-wide text-white/90">{verse.reference}</p>
-                <button
-                  type="button"
-                  onClick={toggleVerseReaction}
-                  aria-label={verseReaction.reacted ? 'Unlike verse of the day' : 'Like verse of the day'}
-                  aria-pressed={verseReaction.reacted}
-                  className={`mt-4 inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition ${
-                    verseReaction.reacted
-                      ? 'border-rose-200/50 bg-rose-500/90 text-white'
-                      : 'border-white/30 bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                >
-                  <span aria-hidden="true" className="text-sm">{verseReaction.reacted ? '♥' : '♡'}</span>
-                  {verseReaction.reactionCount}
-                </button>
-              </>
-            ) : (
-              <p className="mt-3 text-xs leading-5 text-white/80">{verseError || 'Loading today’s scripture…'}</p>
-            )}
-          </section>
+            verse={verse}
+            verseError={verseError}
+            verseReaction={verseReaction}
+            onToggleReaction={toggleVerseReaction}
+          />
 
           <section id="birthday-celebrants" className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">

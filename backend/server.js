@@ -6,6 +6,11 @@ const AttendanceLog = require('./models/AttendanceLog');
 const User = require('./models/User');
 const { verifySmtpConnection } = require('./routes/authRoutes');
 const { initializeRealtime } = require('./realtime/realtime');
+const { markAbsentMembersIfDue } = require('./services/attendanceAbsence');
+const {
+  getChurchAttendanceClock,
+  getChurchAttendanceSundayDate,
+} = require('./utils/attendanceDate');
 
 const port = Number(process.env.PORT) || 5000;
 const mongoUri = process.env.MONGODB_URI;
@@ -76,7 +81,37 @@ async function startServer() {
   });
   initializeRealtime(server);
 
+  let completedAbsenceDate = '';
+  let absenceEvaluationInProgress = false;
+  const evaluateAttendanceAbsences = async () => {
+    const now = new Date();
+    const { weekday, minutes } = getChurchAttendanceClock(now);
+    const sunday = getChurchAttendanceSundayDate(now).toISOString();
+    if (
+      weekday !== 'Sun' ||
+      minutes < 11 * 60 ||
+      completedAbsenceDate === sunday ||
+      absenceEvaluationInProgress
+    ) {
+      return;
+    }
+
+    absenceEvaluationInProgress = true;
+    try {
+      await markAbsentMembersIfDue(now);
+      completedAbsenceDate = sunday;
+    } catch (error) {
+      console.error('Unable to mark absent members for the current Sunday.', error);
+    } finally {
+      absenceEvaluationInProgress = false;
+    }
+  };
+  evaluateAttendanceAbsences();
+  const attendanceAbsenceTimer = setInterval(evaluateAttendanceAbsences, 30 * 1000);
+  attendanceAbsenceTimer.unref();
+
   const shutdown = async () => {
+    clearInterval(attendanceAbsenceTimer);
     server.close(async () => {
       await mongoose.disconnect();
       process.exit(0);

@@ -2,8 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const {
   authenticate,
-  authorizeLifeCoachScanner,
-  authorizeAttendanceMonitoring,
+  authorizeKspLeader,
   authorizeAttendanceStatusManagement,
 } = require('../middleware/authMiddleware');
 const AttendanceLog = require('../models/AttendanceLog');
@@ -12,7 +11,9 @@ const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
 const {
   getChurchAttendanceDate,
+  getAttendanceStatus,
   getChurchAttendanceSundayDate,
+  hasAttendanceCutoffPassed,
 } = require('../utils/attendanceDate');
 const { createNotification } = require('../services/notifications');
 const { emitToAll } = require('../realtime/realtime');
@@ -23,8 +24,7 @@ const sundayAttendanceMessages = {
   late: 'Glad you made it this Sunday! Hope to see you a little earlier next time.',
   absent: 'We missed you this Sunday! Praying for you and hoping to see you next week.',
 };
-const canCheckIn = [authenticate, authorizeLifeCoachScanner];
-const canViewGroupAttendance = [authenticate, authorizeAttendanceMonitoring];
+const canCheckIn = [authenticate, authorizeKspLeader];
 const canManageAttendanceStatus = [authenticate, authorizeAttendanceStatusManagement];
 
 function escapeRegex(value) {
@@ -72,7 +72,7 @@ router.get('/my-summary', authenticate, async (req, res, next) => {
   }
 });
 
-router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) => {
+router.get('/group-summary', ...canCheckIn, async (req, res, next) => {
   const { groupId } = req.query;
   if (groupId && !mongoose.isValidObjectId(groupId)) {
     return res.status(400).json({ message: 'groupId must be a valid ID.' });
@@ -148,6 +148,7 @@ router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) =
         return [String(userId), log];
       })
     );
+    const attendanceCutoffPassed = hasAttendanceCutoffPassed();
     const members = activeRoster.map((beneficiary) => {
       const log = logsByUser.get(String(beneficiary.user._id));
       return {
@@ -156,7 +157,7 @@ router.get('/group-summary', ...canViewGroupAttendance, async (req, res, next) =
         name: beneficiary.user.displayName || 'Unnamed member',
         secondaryDesignations: beneficiary.user.secondaryDesignations || [],
         secondaryDesignation: beneficiary.user.secondaryDesignations || [],
-        status: log?.status || 'absent',
+        status: log?.status || (attendanceCutoffPassed ? 'absent' : 'pending'),
         checkedInAt: log?.checkedInAt || null,
         serviceName: log?.serviceName || null,
         method: log?.method || null,
@@ -442,6 +443,13 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
       });
     }
 
+    const status = getAttendanceStatus(checkedInAt);
+    if (status === 'absent') {
+      return res.status(409).json({
+        message: 'Attendance check-in closes at 11:00 AM PHT.',
+      });
+    }
+
     const attendanceLog = existingAttendance || new AttendanceLog();
     attendanceLog.user = targetUser._id;
     if (beneficiary) attendanceLog.beneficiary = beneficiary._id;
@@ -451,7 +459,7 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
     attendanceLog.serviceName = serviceName;
     attendanceLog.checkedInAt = checkedInAt;
     attendanceLog.method = isQrScan ? 'qr' : 'manual';
-    attendanceLog.status = 'present';
+    attendanceLog.status = status;
     attendanceLog.statusUpdatedAt = checkedInAt;
     await attendanceLog.save();
     emitToAll('attendance:recorded', {
@@ -465,8 +473,8 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
         userId: targetUser._id,
         type: 'attendance_status',
         scope: 'attendance',
-        title: 'Sunday attendance: present',
-        message: sundayAttendanceMessages.present,
+        title: `Sunday attendance: ${status}`,
+        message: sundayAttendanceMessages[status],
         entityId: attendanceLog._id,
       });
     }

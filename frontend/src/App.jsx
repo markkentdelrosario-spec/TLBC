@@ -33,7 +33,7 @@ export default function App() {
             <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
-            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route element={<ProtectedRoute allowedRoles={['member']} requiredDesignation="KSP Leader" />}>
               <Route
                 path="/scanner"
                 element={
@@ -47,6 +47,8 @@ export default function App() {
                   </DashboardWithToken>
                 }
               />
+            </Route>
+            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
               <Route
                 path="/admin"
                 element={

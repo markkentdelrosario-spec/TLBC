@@ -10,6 +10,7 @@ const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
 const {
   buildAttendanceDateMatch,
+  getAttendanceTimeZone,
   getChurchAttendanceDate,
 } = require('../utils/attendanceDate');
 const { getDesignations } = require('../utils/designations');
@@ -147,7 +148,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
   }
 
   const nextDate = new Date(attendanceDate.getTime() + 24 * 60 * 60 * 1000);
-  const timeZone = process.env.CHURCH_TIME_ZONE || 'UTC';
+  const timeZone = getAttendanceTimeZone();
 
   try {
     const [groups, logs] = await Promise.all([

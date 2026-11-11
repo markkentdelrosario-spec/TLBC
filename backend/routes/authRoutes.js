@@ -417,6 +417,49 @@ router.patch('/profile', authenticate, async (req, res, next) => {
   }
 });
 
+router.post('/set-password', authenticate, async (req, res, next) => {
+  const password =
+    typeof req.body?.password === 'string' ? req.body.password : '';
+  if (password.length < 8 || password.length > 128) {
+    return res.status(400).json({
+      message: 'Password must be between 8 and 128 characters.',
+    });
+  }
+
+  const signInProvider = req.firebaseUser?.firebase?.sign_in_provider;
+  if (!['google.com', 'facebook.com', 'password'].includes(signInProvider)) {
+    return res.status(403).json({
+      message: 'Set a password after signing in with Google or Facebook.',
+    });
+  }
+  const authTime = Number(req.firebaseUser.auth_time);
+  const authAge = Date.now() / 1000 - authTime;
+  if (!Number.isFinite(authTime) || authAge < 0 || authAge > 5 * 60) {
+    return res.status(401).json({
+      message: 'Sign in again before setting or changing your password.',
+    });
+  }
+
+  try {
+    const user = await User.findById(req.user._id).select('+passwordHash');
+    if (!user) {
+      return res.status(404).json({ message: 'Account not found.' });
+    }
+    if (user.passwordHash && signInProvider !== 'password') {
+      return res.status(409).json({
+        message: 'A password is already set for this account.',
+      });
+    }
+
+    await getAuth(firebaseApp).updateUser(user.firebaseUid, { password });
+    user.passwordHash = await bcrypt.hash(password, OTP_HASH_ROUNDS);
+    await user.save();
+    return res.json({ message: 'Password set successfully.' });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 async function registerFirebaseAccount(req, res, next) {
   const firebaseUser = req.firebaseUser;
   if (!firebaseUser || typeof firebaseUser !== 'object') {

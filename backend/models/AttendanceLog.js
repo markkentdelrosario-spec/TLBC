@@ -17,7 +17,6 @@ const attendanceLogSchema = new mongoose.Schema(
     scannedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
     },
     // Store the church-local attendance date normalized to midnight.
     attendanceDate: { type: Date, required: true },
@@ -28,7 +27,7 @@ const attendanceLogSchema = new mongoose.Schema(
       maxlength: 100,
       default: 'Church Service',
     },
-    checkedInAt: { type: Date, required: true, default: Date.now },
+    checkedInAt: { type: Date, default: Date.now },
     status: {
       type: String,
       enum: ['present', 'late', 'absent'],
@@ -38,7 +37,7 @@ const attendanceLogSchema = new mongoose.Schema(
     statusUpdatedAt: { type: Date, default: Date.now },
     method: {
       type: String,
-      enum: ['qr', 'manual'],
+      enum: ['qr', 'manual', 'automatic'],
       required: true,
       default: 'qr',
     },

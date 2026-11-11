@@ -26,3 +26,9 @@ export function hasDesignation(userOrValue, designation) {
     (value) => value.trim().toLowerCase() === designation.trim().toLowerCase()
   );
 }
+
+export function hasLeadershipDesignation(userOrValue) {
+  return getDesignations(userOrValue).some((designation) =>
+    designation.endsWith('Leader')
+  );
+}

@@ -17,6 +17,8 @@ services:
         sync: false
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/firebase-admin.json
+      - key: CHURCH_TIME_ZONE
+        value: Asia/Manila
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

@@ -7,6 +7,7 @@ const statusStyles = {
   present: 'attendance-status-present bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
   late: 'attendance-status-late bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200',
   absent: 'attendance-status-absent bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
+  pending: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
 };
 
 function formatTime(value) {
@@ -14,6 +15,7 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'Asia/Manila',
   });
 }
 
@@ -110,6 +112,9 @@ export default function AttendanceMonitoringPanel({
       </header>
 
       <div className="mb-4 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          Pending: {members.filter((member) => member.status === 'pending').length}
+        </span>
         <span className="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
           Present: {members.filter((member) => member.status === 'present').length}
         </span>
@@ -153,7 +158,7 @@ export default function AttendanceMonitoringPanel({
                     <span className={`inline-flex min-h-7 items-center rounded-full px-3 text-xs font-bold capitalize ${statusStyles[member.status] || statusStyles.absent}`}>
                       {member.status}
                     </span>
-                    {member.method === 'qr' && member.status === 'present' && (
+                    {member.method === 'qr' && ['present', 'late'].includes(member.status) && (
                       <span className="ml-2 whitespace-nowrap text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">QR scan</span>
                     )}
                   </td>
@@ -171,6 +176,9 @@ export default function AttendanceMonitoringPanel({
                       onChange={(event) => updateStatus(member, event.target.value)}
                       className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 outline-none focus:border-violet-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 sm:w-32"
                     >
+                      {member.status === 'pending' && (
+                        <option value="pending" disabled>Pending</option>
+                      )}
                       <option value="present">Present</option>
                       <option value="late">Late</option>
                       <option value="absent">Absent</option>

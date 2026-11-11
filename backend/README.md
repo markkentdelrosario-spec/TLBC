@@ -20,6 +20,21 @@ error until the required SMTP settings are present. Enable the Email/Password
 sign-in provider in Firebase Authentication so members can sign in with the
 password they set during registration.
 
+## Attendance and account access
+
+Attendance dates and evaluations use `CHURCH_TIME_ZONE` (default
+`Asia/Manila`). Sunday check-ins before 8:30 AM are Present; check-ins from
+8:30 AM until before 11:00 AM are Late. The API records Absent for active group
+members without a check-in once the Sunday 11:00 AM cutoff passes.
+
+Members with a leadership secondary designation can add an active member to their own
+assigned group through `POST /api/groups/members` using the member's email.
+The QR scanner and its attendance endpoints require the KSP Leader secondary
+designation. Google and Facebook users can set an email/password credential in
+account settings; the authenticated `POST /api/auth/set-password` endpoint
+updates Firebase Authentication and stores a bcrypt hash in MongoDB. Firebase
+requires recent authentication before a password can be set or changed.
+
 Codes expire after 10 minutes, can be resent after a 60-second cooldown, and are
 invalidated after five incorrect attempts. The API endpoints are
 `POST /api/auth/register`, `POST /api/auth/verify-otp`, and

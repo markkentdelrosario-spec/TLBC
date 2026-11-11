@@ -1,7 +1,11 @@
 const { getAuth } = require('firebase-admin/auth');
 const firebaseApp = require('../config/firebaseAdmin');
 const User = require('../models/User');
-const { getDesignations, hasDesignation } = require('../utils/designations');
+const {
+  getDesignations,
+  hasDesignation,
+  hasLeadershipDesignation,
+} = require('../utils/designations');
 
 const SYSTEM_ROLES = new Set(['admin', 'pastor', 'member']);
 const LEGACY_MEMBER_ROLES = new Set(['life_coach', 'beneficiary']);
@@ -97,6 +101,7 @@ async function authenticate(req, res, next) {
       userId: user._id.toString(),
       role: user.role,
     };
+    req.firebaseUser = decodedToken;
     return next();
   } catch (error) {
     return next(error);
@@ -119,33 +124,28 @@ function authorizeRoles(...allowedRoles) {
   };
 }
 
-function authorizeLifeCoachScanner(req, res, next) {
-  if (req.user?.role === 'admin') {
+function authorizeKspLeader(req, res, next) {
+  if (req.user?.role === 'member' && hasDesignation(req.user, SCANNER_DESIGNATION)) {
     return next();
   }
   return res
     .status(403)
-    .json({ message: 'Only administrators can use attendance QR scanning.' });
+    .json({ message: 'Only KSP Leaders can use this feature.' });
+}
+
+function authorizeSecondaryDesignation(req, res, next) {
+  if (req.user?.role === 'member' && hasLeadershipDesignation(req.user)) {
+    return next();
+  }
+  return res.status(403).json({
+    message: 'A leadership designation is required to manage group members.',
+  });
 }
 
 function authorizeReportAccess(req, res, next) {
   if (req.user?.role === 'admin') return next();
   return res.status(403).json({
     message: 'Reports are available to administrators only.',
-  });
-}
-
-function authorizeAttendanceMonitoring(req, res, next) {
-  if (
-    req.user?.role === 'admin' ||
-    (req.user?.role === 'member' &&
-      (hasDesignation(req.user, SCANNER_DESIGNATION) ||
-        hasDesignation(req.user, 'KSP Leader')))
-  ) {
-    return next();
-  }
-  return res.status(403).json({
-    message: 'Attendance monitoring is available to Life Coaches and KSP Leaders.',
   });
 }
 
@@ -164,8 +164,8 @@ function authorizeAttendanceStatusManagement(req, res, next) {
 module.exports = {
   authenticate,
   authorizeRoles,
-  authorizeLifeCoachScanner,
-  authorizeAttendanceMonitoring,
+  authorizeKspLeader,
+  authorizeSecondaryDesignation,
   authorizeAttendanceStatusManagement,
   authorizeReportAccess,
   verifyFirebaseIdToken,

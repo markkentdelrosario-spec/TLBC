@@ -15,7 +15,7 @@ const uploadFolders = new Set([
 ]);
 const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   fileFilter(req, file, callback) {
     if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.mimetype)) {
       const error = new Error('Only JPEG, PNG, WebP, or GIF images are allowed.');
@@ -95,7 +95,7 @@ router.post('/', authenticate, (req, res, next) => {
         return res.status(400).json({
           message:
             uploadError.code === 'LIMIT_FILE_SIZE'
-              ? 'Image must be 5 MB or smaller.'
+                ? 'Image must be 10 MB or smaller.'
               : 'Please upload one image file at a time.',
         });
       }

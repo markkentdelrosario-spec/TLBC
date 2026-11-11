@@ -130,6 +130,48 @@
     color: #cbd5e1 !important;
   }
 
+  html.dark .digital-id-card {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  html.dark .digital-id-card .digital-id-card__profile {
+    background-color: #ecfdf5 !important;
+    border-color: #a7f3d0 !important;
+  }
+
+  html.dark .digital-id-card .digital-id-card__qr,
+  html.dark .digital-id-card [class~="bg-white"] {
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  html.dark .digital-id-card [class~="text-slate-900"] {
+    color: #0f172a !important;
+  }
+
+  html.dark .digital-id-card [class~="text-slate-800"],
+  html.dark .digital-id-card [class~="text-slate-700"] {
+    color: #1e293b !important;
+  }
+
+  html.dark .digital-id-card [class~="text-slate-600"],
+  html.dark .digital-id-card [class~="text-slate-500"],
+  html.dark .digital-id-card [class~="text-slate-400"] {
+    color: #64748b !important;
+  }
+
+  html.dark .digital-id-card [class~="text-emerald-800"] {
+    color: #065f46 !important;
+  }
+
+  html.dark .digital-id-card [class~="border-slate-100"],
+  html.dark .digital-id-card [class~="border-slate-200"],
+  html.dark .digital-id-card [class~="border-slate-300"] {
+    border-color: #e2e8f0 !important;
+  }
+
   html.dark .attendance-status-present {
     background-color: #064e3b !important;
     color: #d1fae5 !important;

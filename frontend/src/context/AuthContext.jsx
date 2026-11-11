@@ -184,6 +184,37 @@ export function AuthProvider({ children }) {
       );
       await reauthenticateWithCredential(firebaseUser, credential);
       await updatePassword(firebaseUser, newPassword);
+      await apiRequest('/auth/set-password', {
+        getIdToken: () => firebaseUser.getIdToken(true),
+        apiBaseUrl,
+        method: 'POST',
+        body: JSON.stringify({ password: newPassword }),
+      });
+    },
+    [firebaseUser]
+  );
+  const setPassword = useCallback(
+    async (newPassword) => {
+      if (!auth) throw firebaseSetupError();
+      if (!firebaseUser) throw new Error('You are not signed in.');
+      if (firebaseUser.providerData.some(({ providerId }) => providerId === 'password')) {
+        throw new Error('This account already has an email and password sign-in.');
+      }
+      if (
+        typeof newPassword !== 'string' ||
+        newPassword.length < 8 ||
+        newPassword.length > 128
+      ) {
+        throw new Error('Your password must be between 8 and 128 characters.');
+      }
+
+      await apiRequest('/auth/set-password', {
+        getIdToken: () => firebaseUser.getIdToken(true),
+        apiBaseUrl,
+        method: 'POST',
+        body: JSON.stringify({ password: newPassword }),
+      });
+      await firebaseUser.reload();
     },
     [firebaseUser]
   );
@@ -229,6 +260,7 @@ export function AuthProvider({ children }) {
       loginWithEmail,
       resetPassword,
       changePassword,
+      setPassword,
       finishCustomTokenSignIn,
       loginWithGoogle,
       loginWithFacebook,
@@ -237,6 +269,7 @@ export function AuthProvider({ children }) {
     [
       authError,
       changePassword,
+      setPassword,
       firebaseUser,
       getIdToken,
       loading,

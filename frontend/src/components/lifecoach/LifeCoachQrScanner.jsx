@@ -2,7 +2,6 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Link } from 'react-router-dom';
 import { apiRequest, getErrorMessage } from '../../services/api';
-import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
 const buttonClass =
@@ -13,15 +12,24 @@ const attendanceStatusStyles = {
   present: 'attendance-status-present bg-emerald-100 text-emerald-800',
   late: 'attendance-status-late bg-orange-100 text-orange-800',
   absent: 'attendance-status-absent bg-red-100 text-red-800',
+  pending: 'bg-slate-100 text-slate-600',
 };
 
 function getCurrentSundayLabel() {
-  const date = new Date();
-  date.setDate(date.getDate() - date.getDay());
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const date = new Date(`${values.year}-${values.month}-${values.day}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
   return date.toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   });
 }
 
@@ -30,7 +38,6 @@ export default function LifeCoachQrScanner({
   apiBaseUrl = '/api',
   serviceName = 'Church Service',
 }) {
-  const { user } = useAuth();
   const { showToast } = useToast();
   const reactId = useId();
   const scannerElementId = `ksp-qr-reader-${reactId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -48,10 +55,6 @@ export default function LifeCoachQrScanner({
   const [groupSummaryLoading, setGroupSummaryLoading] = useState(true);
 
   const loadGroupSummary = useCallback(async () => {
-    if (user?.role === 'admin') {
-      setGroupSummaryLoading(false);
-      return;
-    }
     setGroupSummaryLoading(true);
     try {
       const result = await apiRequest('/attendance/group-summary', {
@@ -62,7 +65,7 @@ export default function LifeCoachQrScanner({
     } finally {
       if (mountedRef.current) setGroupSummaryLoading(false);
     }
-  }, [apiBaseUrl, getIdToken, user?.role]);
+  }, [apiBaseUrl, getIdToken]);
 
   useEffect(() => {
     let active = true;
@@ -119,11 +122,9 @@ export default function LifeCoachQrScanner({
       setStatus(`Attendance recorded for ${name}.`);
       showToast(`Attendance recorded for ${name}.`, 'success');
       setResults([]);
-      if (user?.role !== 'admin') {
-        loadGroupSummary().catch((summaryError) => {
-          if (mountedRef.current) setError(getErrorMessage(summaryError));
-        });
-      }
+      loadGroupSummary().catch((summaryError) => {
+        if (mountedRef.current) setError(getErrorMessage(summaryError));
+      });
     } catch (checkInError) {
       if (mountedRef.current) setError(getErrorMessage(checkInError));
     } finally {
@@ -199,12 +200,12 @@ export default function LifeCoachQrScanner({
       <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-            The Life Builder Church · Admin QR Scanner
+            The Life Builder Church · KSP Leader QR Scanner
           </p>
           <div className="mt-2 flex items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Record attendance</h1>
             <Link
-              to="/admin"
+              to="/profile"
               className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
             >
               Back to dashboard
@@ -239,9 +240,7 @@ export default function LifeCoachQrScanner({
             <p className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900">
               {groupSummaryLoading
                 ? 'Loading…'
-                : user?.role === 'admin'
-                  ? 'Scan a member QR ID'
-                  : `${groupSummary?.attendanceCount || 0} / ${groupSummary?.beneficiaryCount || 0} checked in`}
+                : `${groupSummary?.attendanceCount || 0} / ${groupSummary?.beneficiaryCount || 0} checked in`}
             </p>
           </div>
           {groupSummary?.members?.length > 0 && (
@@ -262,7 +261,7 @@ export default function LifeCoachQrScanner({
                         <span className={`inline-flex min-h-7 items-center rounded-full px-3 text-xs font-bold capitalize ${attendanceStatusStyles[member.status] || attendanceStatusStyles.absent}`}>
                           {member.status}
                         </span>
-                        {member.method === 'qr' && member.status === 'present' && (
+                        {member.method === 'qr' && ['present', 'late'].includes(member.status) && (
                           <span className="ml-2 whitespace-nowrap text-[10px] font-semibold text-emerald-700">QR scan</span>
                         )}
                       </td>
@@ -271,6 +270,7 @@ export default function LifeCoachQrScanner({
                           ? new Date(member.checkedInAt).toLocaleTimeString([], {
                             hour: 'numeric',
                             minute: '2-digit',
+                            timeZone: 'Asia/Manila',
                           })
                           : '—'}
                       </td>

@@ -13,7 +13,6 @@ const slideshowRoutes = require('./slideshowRoutes');
 
 const router = express.Router();
 
-router.use(express.json({ limit: '1mb' }));
 router.use('/auth', authRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/slideshows', slideshowRoutes);
