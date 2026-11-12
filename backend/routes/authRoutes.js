@@ -1,12 +1,15 @@
 const express = require('express');
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer');
 const { getAuth } = require('firebase-admin/auth');
 const firebaseApp = require('../config/firebaseAdmin');
 const { verifyFirebaseIdToken, authenticate } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
 const User = require('../models/User');
+const {
+  createResendClient,
+  sendRegistrationOtp,
+} = require('../services/email');
 
 const router = express.Router();
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -14,71 +17,12 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 const OTP_HASH_ROUNDS = 10;
 
-function getSmtpConfig() {
-  const password = process.env.SMTP_PASS || process.env.SMTP_PASSWORD;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
-  return {
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT,
-    user: process.env.SMTP_USER,
-    password,
-    from,
-  };
-}
-
 function normalizeGmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-function createRegistrationMailer() {
-  const { host, port: rawPort, user, password, from } = getSmtpConfig();
-  if (!host || !rawPort || !user || !password || !from) {
-    return null;
-  }
-  const port = Number(rawPort);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error('SMTP_PORT must be a valid TCP port.');
-  }
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass: password },
-  });
-}
-
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character]);
-}
-
-async function sendRegistrationOtp(mailer, email, displayName, otp) {
-  const safeName = escapeHtml(displayName);
-  await mailer.sendMail({
-    from: getSmtpConfig().from,
-    to: email,
-    subject: 'Your Life Builder Church verification code',
-    text: `Hello ${displayName}, your verification code is ${otp}. It expires in 10 minutes.`,
-    html: `
-      <div style="margin:0;padding:32px 16px;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a">
-        <div style="max-width:520px;margin:0 auto;padding:32px;border-radius:20px;background:#ffffff">
-          <p style="margin:0;color:#047857;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase">The Life Builder Church</p>
-          <h1 style="margin:16px 0 8px;font-size:24px">Verify your email</h1>
-          <p style="margin:0 0 20px;color:#475569">Hello ${safeName}, use this one-time code to finish creating your account.</p>
-          <div style="padding:18px;border-radius:14px;background:#ecfdf5;text-align:center;color:#064e3b;font-size:32px;font-weight:700;letter-spacing:8px">${otp}</div>
-          <p style="margin:20px 0 0;color:#64748b;font-size:13px">This code expires in 10 minutes. If you did not request it, you can ignore this email.</p>
-        </div>
-      </div>`,
-  });
-}
-
-function getRegistrationMailerError() {
-  return 'Email registration is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS (or SMTP_PASSWORD).';
+function getRegistrationEmailError() {
+  return 'Email registration is not configured. Set RESEND_API_KEY.';
 }
 
 async function registerManualAccount(req, res, next) {
@@ -101,13 +45,8 @@ async function registerManualAccount(req, res, next) {
     return res.status(400).json({ message: 'Password must be between 8 and 128 characters.' });
   }
 
-  let mailer;
-  try {
-    mailer = createRegistrationMailer();
-  } catch (error) {
-    return next(error);
-  }
-  if (!mailer) return res.status(503).json({ message: getRegistrationMailerError() });
+  const resend = createResendClient();
+  if (!resend) return res.status(503).json({ message: getRegistrationEmailError() });
 
   let pendingUser;
   try {
@@ -137,7 +76,7 @@ async function registerManualAccount(req, res, next) {
     });
 
     try {
-      await sendRegistrationOtp(mailer, email, displayName, otp);
+      await sendRegistrationOtp(resend, email, displayName, otp);
     } catch (error) {
       await User.deleteOne({ _id: pendingUser._id });
       return next(error);
@@ -262,13 +201,8 @@ router.post('/resend-otp', async (req, res, next) => {
     return res.status(400).json({ message: 'Use a valid Gmail address ending in @gmail.com.' });
   }
 
-  let mailer;
-  try {
-    mailer = createRegistrationMailer();
-  } catch (error) {
-    return next(error);
-  }
-  if (!mailer) return res.status(503).json({ message: getRegistrationMailerError() });
+  const resend = createResendClient();
+  if (!resend) return res.status(503).json({ message: getRegistrationEmailError() });
 
   try {
     const pendingUser = await User.findOne({ email, isVerified: false })
@@ -288,7 +222,7 @@ router.post('/resend-otp', async (req, res, next) => {
     }
 
     const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-    await sendRegistrationOtp(mailer, email, pendingUser.displayName, otp);
+    await sendRegistrationOtp(resend, email, pendingUser.displayName, otp);
     pendingUser.otp = await bcrypt.hash(otp, OTP_HASH_ROUNDS);
     pendingUser.otpExpires = new Date(Date.now() + OTP_TTL_MS);
     pendingUser.otpAttempts = 0;
@@ -564,11 +498,4 @@ router.post(
   (req, res, next) => registerFirebaseAccount(req, res, next)
 );
 
-async function verifySmtpConnection() {
-  const mailer = createRegistrationMailer();
-  if (!mailer) throw new Error(getRegistrationMailerError());
-  await mailer.verify();
-}
-
 module.exports = router;
-module.exports.verifySmtpConnection = verifySmtpConnection;

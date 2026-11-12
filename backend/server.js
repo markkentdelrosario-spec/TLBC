@@ -11,7 +11,7 @@ const mongoose = require('mongoose');
 const app = require('./app');
 const AttendanceLog = require('./models/AttendanceLog');
 const User = require('./models/User');
-const { verifySmtpConnection } = require('./routes/authRoutes');
+const { validateResendConfig } = require('./services/email');
 const { initializeRealtime } = require('./realtime/realtime');
 const { markAbsentMembersIfDue } = require('./services/attendanceAbsence');
 const {
@@ -105,10 +105,10 @@ async function startServer() {
   );
 
   try {
-    await verifySmtpConnection();
-    console.log('SMTP connection verified successfully.');
+    validateResendConfig();
+    console.log('Resend email API key is configured.');
   } catch (error) {
-    console.error('SMTP connection verification failed:', error.message);
+    console.error('Resend email configuration failed:', error.message);
   }
 
   const server = app.listen(port, '0.0.0.0', () => {

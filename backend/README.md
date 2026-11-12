@@ -27,24 +27,28 @@ variables in the service Environment settings; local `.env` files are not
 deployed.
 
 Manual Gmail registration stores a pending MongoDB profile and a bcrypt-hashed
-password/OTP, then emails a six-digit code. Firebase Authentication account
-creation and account activation happen only after the code is verified. Configure
-these environment variables for the API process:
+password/OTP, then sends a six-digit code through the Resend HTTP API over HTTPS
+(port 443). Firebase Authentication account creation and account activation
+happen only after the code is verified. Configure these environment variables
+for the API process:
 
 | Variable | Purpose |
 | --- | --- |
-| `SMTP_HOST` | SMTP server hostname |
-| `SMTP_PORT` | SMTP port (`465` for implicit TLS, commonly `587` for STARTTLS) |
-| `SMTP_USER` | SMTP account username |
-| `SMTP_PASS` | SMTP account password or provider app password (`SMTP_PASSWORD` is also accepted) |
-| `SMTP_FROM` | Optional verified sender address; defaults to `SMTP_USER` |
+| `RESEND_API_KEY` | Resend API key; required to send registration emails |
+| `RESEND_FROM` | Optional sender in `Name <email@yourdomain.com>` format; defaults to Resend's onboarding sender |
 
-For Gmail SMTP, use a Google app password rather than the account's normal
-password. On startup the API runs `transporter.verify()` and logs whether SMTP
-connection verification succeeded. Email registration returns a configuration
-error until the required SMTP settings are present. Enable the Email/Password
-sign-in provider in Firebase Authentication so members can sign in with the
-password they set during registration.
+Create an API key in the [Resend dashboard](https://resend.com/api-keys), then
+set `RESEND_API_KEY` in `backend/.env` for local development and in the Render
+API service's Environment settings for deployment. Do not commit the key. For
+production delivery to arbitrary recipients, verify your sending domain in the
+[Resend Domains dashboard](https://resend.com/domains) and set `RESEND_FROM` to
+an address on that domain. Resend's `onboarding@resend.dev` sender is intended
+for testing and may only deliver to the account's verified recipient. The API
+checks that the key is configured at startup; Resend validates the key and
+sender when an email is submitted. Registration returns a configuration error
+when `RESEND_API_KEY` is missing. Enable the Email/Password sign-in provider in
+Firebase Authentication so members can sign in with the password they set
+during registration.
 
 ## Attendance and account access
 
