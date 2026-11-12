@@ -105,13 +105,12 @@ Uploaded images and slide order are stored in Cloudinary and MongoDB
 respectively; the dashboard fetches the active slides after sign-in.
 
 The built-in Bible reader offers the public translations provided by
-bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). NKJV is served by
-API.Bible because it is a licensed translation. Configure
-`VITE_API_BIBLE_KEY` in the frontend build environment and enable NKJV for that
-API.Bible key. For Render, set it in the frontend static site's Environment
-settings (not the backend service), then redeploy the frontend so Vite includes
-it in the build. Without this configuration, the reader displays a clear setup
-error when NKJV is selected.
+bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). NKJV, NLT, and NIV
+are served by API.Bible. Configure `VITE_API_BIBLE_KEY` in the frontend build
+environment and enable access to each version for that key. For Render, set it
+in the frontend static site's Environment settings (not the backend service),
+then redeploy the frontend so Vite includes it in the build. The reader reports
+a setup or access error when a selected API.Bible version is unavailable.
 
 ## Live reactions and notifications
 

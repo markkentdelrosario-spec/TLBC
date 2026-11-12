@@ -20,8 +20,9 @@ Set the prompted values in the Render dashboard:
   `firebase-admin.json`; the Blueprint points
   `GOOGLE_APPLICATION_CREDENTIALS` to `/etc/secrets/firebase-admin.json`.
 - Frontend: the `VITE_FIREBASE_*` values for the deployed Firebase web app.
-  To enable NKJV in the Bible reader, also set `VITE_API_BIBLE_KEY` on the
-  frontend static site to an API.Bible key that has NKJV access.
+  To enable NKJV, NLT, and NIV in the Bible reader, also set
+  `VITE_API_BIBLE_KEY` on the frontend static site to an API.Bible key with
+  access to each version.
 - If the frontend uses a custom domain, update `FRONTEND_URL` on the API service
   to that site's origin.
 

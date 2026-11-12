@@ -20,12 +20,15 @@ import MemberQRCode from '../member/MemberQRCode';
 import AttendanceReportsPanel from '../admin/AttendanceReportsPanel';
 import ThemeToggle from '../shared/ThemeToggle';
 import ImageUpload from '../shared/ImageUpload';
+import ConfirmationModal from '../shared/ConfirmationModal';
 import AttendanceMonitoringPanel from '../attendance/AttendanceMonitoringPanel';
 
 const BIBLE_TRANSLATIONS = [
   ['web', 'World English Bible (WEB)'],
   ['kjv', 'King James Version (KJV)'],
   ['nkjv', 'New King James Version (NKJV)'],
+  ['nlt', 'New Living Translation (NLT)'],
+  ['niv', 'New International Version (NIV)'],
   ['asv', 'American Standard Version (ASV)'],
   ['bbe', 'Bible in Basic English (BBE)'],
   ['darby', 'Darby Bible'],
@@ -61,12 +64,18 @@ const navItems = [
   { label: 'Groups', href: '#groups', icon: '♧' },
 ];
 
-let nkjvBibleRequest;
+const API_BIBLE_TRANSLATIONS = {
+  nkjv: 'NKJV',
+  nlt: 'NLT',
+  niv: 'NIV',
+};
+const apiBibleRequests = new Map();
 
-async function fetchNkjvReference(reference) {
+async function fetchApiBibleReference(reference, translation) {
+  const abbreviation = API_BIBLE_TRANSLATIONS[translation];
   const apiKey = import.meta.env.VITE_API_BIBLE_KEY;
   if (!apiKey) {
-    throw new Error('NKJV requires an API.Bible key. Configure VITE_API_BIBLE_KEY and enable NKJV for the key.');
+    throw new Error(`${abbreviation} requires an API.Bible key. Configure VITE_API_BIBLE_KEY and enable ${abbreviation} for the key.`);
   }
   const request = async (path) => {
     const response = await fetch(`https://api.scripture.api.bible/v1${path}`, {
@@ -74,26 +83,31 @@ async function fetchNkjvReference(reference) {
     });
     const payload = await response.json();
     if (!response.ok || payload.error) {
-      throw new Error(payload.message || payload.error || 'The NKJV Bible service is unavailable.');
+      throw new Error(payload.message || payload.error || `The ${abbreviation} Bible service is unavailable.`);
     }
     return payload.data;
   };
-  if (!nkjvBibleRequest) {
-    nkjvBibleRequest = request('/bibles?language=eng&abbreviation=NKJV')
+  if (!apiBibleRequests.has(abbreviation)) {
+    const bibleRequest = request(
+      `/bibles?language=eng&abbreviation=${encodeURIComponent(abbreviation)}`
+    )
       .then((data) => {
         const bible = data?.find((item) =>
-          item.abbreviation?.toUpperCase() === 'NKJV' ||
-          item.name?.toUpperCase().includes('NKJV')
+          item.abbreviation?.toUpperCase() === abbreviation ||
+          item.name?.toUpperCase().includes(abbreviation)
         );
-        if (!bible) throw new Error('The configured API.Bible key does not have access to NKJV.');
+        if (!bible) {
+          throw new Error(`The configured API.Bible key does not have access to ${abbreviation}.`);
+        }
         return bible;
       })
       .catch((error) => {
-        nkjvBibleRequest = null;
+        apiBibleRequests.delete(abbreviation);
         throw error;
       });
+    apiBibleRequests.set(abbreviation, bibleRequest);
   }
-  const bible = await nkjvBibleRequest;
+  const bible = await apiBibleRequests.get(abbreviation);
   const match = reference.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
   if (!match) {
     throw new Error('Enter a Bible reference such as John 3, John 3:16, or John 3:16-18.');
@@ -104,7 +118,7 @@ async function fetchNkjvReference(reference) {
     item.name?.toLowerCase() === bookName.toLowerCase() ||
     item.abbreviation?.toLowerCase() === bookName.toLowerCase()
   );
-  if (!book) throw new Error(`The NKJV book "${bookName}" was not found.`);
+  if (!book) throw new Error(`The ${abbreviation} book "${bookName}" was not found.`);
   const start = `${book.id}.${chapter}${firstVerse ? `.${firstVerse}` : ''}`;
   const end = lastVerse ? `-${book.id}.${chapter}.${lastVerse}` : '';
   const passage = await request(
@@ -116,7 +130,7 @@ async function fetchNkjvReference(reference) {
   return {
     reference: passage.reference || reference,
     text: content.replace(/<[^>]*>/g, '').trim(),
-    translation_name: bible.name || 'New King James Version',
+    translation_name: bible.name || abbreviation,
   };
 }
 
@@ -225,11 +239,18 @@ export default function ChurchDashboardShell({
   const [smallGroupError, setSmallGroupError] = useState('');
   const [smallGroupMessage, setSmallGroupMessage] = useState('');
   const [smallGroupMemberRemoving, setSmallGroupMemberRemoving] = useState('');
+  const [confirmation, setConfirmation] = useState(null);
   const [selectedTeamMembers, setSelectedTeamMembers] = useState({});
   const [groupMemberBusy, setGroupMemberBusy] = useState(false);
   const [teamMemberRemoving, setTeamMemberRemoving] = useState('');
   const [groupMemberMessage, setGroupMemberMessage] = useState('');
   const [groupMemberError, setGroupMemberError] = useState('');
+  const cancelConfirmation = useCallback(() => setConfirmation(null), []);
+  const confirmPendingAction = useCallback(() => {
+    const action = confirmation?.onConfirm;
+    setConfirmation(null);
+    action?.();
+  }, [confirmation]);
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
@@ -740,8 +761,8 @@ export default function ChurchDashboardShell({
     setReaderError('');
     setReaderVerse(null);
     try {
-      if (translation === 'nkjv') {
-        const result = await fetchNkjvReference(reference);
+      if (Object.hasOwn(API_BIBLE_TRANSLATIONS, translation)) {
+        const result = await fetchApiBibleReference(reference, translation);
         if (requestVersion !== bibleRequestVersion.current) return;
         setReaderVerse(result);
         return;
@@ -773,9 +794,6 @@ export default function ChurchDashboardShell({
   }
 
   async function removeTeamMember(team, member) {
-    if (!window.confirm(`Remove ${member.name} from the ${team.name} team? Their account and other assignments will remain unchanged.`)) {
-      return;
-    }
     const removalKey = `${team.id}:${member.id}`;
     setTeamMemberRemoving(removalKey);
     setGroupMemberError('');
@@ -807,9 +825,6 @@ export default function ChurchDashboardShell({
   }
 
   async function removeSmallGroupMember(member) {
-    if (!window.confirm(`Remove ${member.name} from ${smallGroup.group.name}? Their account will remain active, but their small-group assignment and QR attendance access will be removed.`)) {
-      return;
-    }
     setSmallGroupMemberRemoving(String(member.id));
     setSmallGroupError('');
     setSmallGroupMessage('');
@@ -830,6 +845,24 @@ export default function ChurchDashboardShell({
     } finally {
       setSmallGroupMemberRemoving('');
     }
+  }
+
+  function requestTeamMemberRemoval(team, member) {
+    setConfirmation({
+      title: `Remove ${member.name} from the ${team.name} team?`,
+      message: 'Their account and other assignments will remain unchanged.',
+      confirmText: 'Remove',
+      onConfirm: () => removeTeamMember(team, member),
+    });
+  }
+
+  function requestSmallGroupMemberRemoval(member) {
+    setConfirmation({
+      title: `Remove ${member.name} from ${smallGroup.group.name}?`,
+      message: 'Their account will remain active, but their small-group assignment and QR attendance access will be removed.',
+      confirmText: 'Remove',
+      onConfirm: () => removeSmallGroupMember(member),
+    });
   }
 
   async function submitBibleSearch(event) {
@@ -1900,7 +1933,7 @@ export default function ChurchDashboardShell({
                                     ) : (
                                       <button
                                         type="button"
-                                        onClick={() => removeTeamMember(team, member)}
+                                        onClick={() => requestTeamMemberRemoval(team, member)}
                                         disabled={teamMemberRemoving !== ''}
                                         className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                                       >
@@ -2010,7 +2043,7 @@ export default function ChurchDashboardShell({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => removeSmallGroupMember(member)}
+                              onClick={() => requestSmallGroupMemberRemoval(member)}
                               disabled={smallGroupMemberRemoving !== ''}
                               className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                             >
@@ -2050,6 +2083,14 @@ export default function ChurchDashboardShell({
         </section>
 
         <MemberQRCode user={user} open={qrOpen} onClose={() => setQrOpen(false)} showTrigger={false} />
+        <ConfirmationModal
+          open={Boolean(confirmation)}
+          title={confirmation?.title || ''}
+          message={confirmation?.message || ''}
+          confirmText={confirmation?.confirmText || 'Confirm'}
+          onConfirm={confirmPendingAction}
+          onCancel={cancelConfirmation}
+        />
 
         {profileOpen && (
           <div
