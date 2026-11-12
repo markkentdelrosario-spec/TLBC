@@ -194,6 +194,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
         unassignedAttendees.push({
           beneficiaryName: attendeeUser?.displayName || 'Unknown member',
           designation: getDesignations(attendeeUser).join(', ') || 'Member',
+          status: log.status || 'present',
           checkedInAt: log.checkedInAt,
           checkedInAtFormatted: formatCheckInTime(log.checkedInAt, timeZone),
           serviceName: log.serviceName,
@@ -214,6 +215,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
       group.attendees.push({
         beneficiaryName: attendeeUser?.displayName || 'Unknown member',
         designation: getDesignations(attendeeUser).join(', ') || 'Member',
+        status: log.status || 'present',
         checkedInAt: log.checkedInAt,
         checkedInAtFormatted: formatCheckInTime(
           log.checkedInAt,

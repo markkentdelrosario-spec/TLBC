@@ -13,6 +13,7 @@ const {
   getChurchAttendanceDate,
   getAttendanceStatus,
   getChurchAttendanceSundayDate,
+  isChurchAttendanceSunday,
   hasAttendanceCutoffPassed,
 } = require('../utils/attendanceDate');
 const { createNotification } = require('../services/notifications');
@@ -112,7 +113,7 @@ router.get('/group-summary', ...canCheckIn, async (req, res, next) => {
       return res.status(404).json({ message: 'Active group not found.' });
     }
 
-    const today = getChurchAttendanceDate();
+    const today = getChurchAttendanceSundayDate();
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const roster = await Beneficiary.find({ group: group._id, isActive: true })
       .populate('user', 'displayName email phoneNumber isActive secondaryDesignations')
@@ -340,6 +341,13 @@ router.get('/search', ...canCheckIn, async (req, res, next) => {
 });
 
 router.post('/check-in', ...canCheckIn, async (req, res, next) => {
+  const checkedInAt = new Date();
+  if (!isChurchAttendanceSunday(checkedInAt)) {
+    return res.status(403).json({
+      message: 'Attendance can only be recorded on Sunday (Philippine Time).',
+    });
+  }
+
   const body = req.body || {};
   const qrToken =
     typeof body.qrToken === 'string' ? body.qrToken.trim() : '';
@@ -428,7 +436,6 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
       });
     }
 
-    const checkedInAt = new Date();
     const attendanceDate = getChurchAttendanceSundayDate(checkedInAt);
     const duplicateQuery = {
       attendanceDate,

@@ -15,6 +15,13 @@ const attendanceStatusStyles = {
   pending: 'bg-slate-100 text-slate-600',
 };
 
+function isChurchSunday() {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    weekday: 'short',
+  }).format(new Date()) === 'Sun';
+}
+
 function getCurrentSundayLabel() {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',
@@ -45,6 +52,7 @@ export default function LifeCoachQrScanner({
   const busyRef = useRef(false);
   const mountedRef = useRef(true);
   const [scannerState, setScannerState] = useState('idle');
+  const [isSunday, setIsSunday] = useState(isChurchSunday);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -53,6 +61,13 @@ export default function LifeCoachQrScanner({
   const [checkingInId, setCheckingInId] = useState('');
   const [groupSummary, setGroupSummary] = useState(null);
   const [groupSummaryLoading, setGroupSummaryLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setIsSunday(isChurchSunday());
+    }, 30 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const loadGroupSummary = useCallback(async () => {
     setGroupSummaryLoading(true);
@@ -101,6 +116,10 @@ export default function LifeCoachQrScanner({
   }
 
   async function recordAttendance({ qrToken, beneficiaryId, methodKey }) {
+    if (!isChurchSunday()) {
+      setError('Attendance can only be recorded on Sunday (Philippine Time).');
+      return;
+    }
     if (busyRef.current) return;
     busyRef.current = true;
     setCheckingInId(methodKey || 'qr');
@@ -136,6 +155,10 @@ export default function LifeCoachQrScanner({
   async function startScanner() {
     setError('');
     setStatus('');
+    if (!isChurchSunday()) {
+      setError('The QR scanner is available for attendance check-in on Sunday (Philippine Time).');
+      return;
+    }
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera access is not available. Open this page over HTTPS or use manual search.');
@@ -216,6 +239,11 @@ export default function LifeCoachQrScanner({
           </p>
         </header>
 
+        {!isSunday && (
+          <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Attendance check-in is available only on Sundays (Philippine Time). You can still search the group roster.
+          </p>
+        )}
         {error && (
           <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800">
             {error}
@@ -299,9 +327,11 @@ export default function LifeCoachQrScanner({
               <button
                 className={buttonClass}
                 onClick={startScanner}
-                disabled={scannerState === 'starting' || checkingInId !== ''}
+                disabled={!isSunday || scannerState === 'starting' || checkingInId !== ''}
               >
-                {scannerState === 'starting' ? 'Starting camera…' : 'Open camera'}
+                {scannerState === 'starting'
+                  ? 'Starting camera…'
+                  : isSunday ? 'Open camera' : 'Available on Sunday'}
               </button>
             )}
           </div>
@@ -358,12 +388,14 @@ export default function LifeCoachQrScanner({
                     </div>
                     <button
                       className={`${buttonClass} w-full sm:w-auto`}
-                      disabled={checkingInId !== ''}
+                      disabled={!isSunday || checkingInId !== ''}
                       onClick={() =>
                         recordAttendance({ beneficiaryId: id, methodKey: id })
                       }
                     >
-                      {checkingInId === id ? 'Recording…' : 'Record attendance'}
+                      {checkingInId === id
+                        ? 'Recording…'
+                        : isSunday ? 'Record attendance' : 'Available on Sunday'}
                     </button>
                   </li>
                 );

@@ -8,6 +8,7 @@ const {
   getChurchAttendanceClock,
   getChurchAttendanceDate,
   getChurchAttendanceSundayDate,
+  isChurchAttendanceSunday,
   hasAttendanceCutoffPassed,
 } = require('../utils/attendanceDate');
 
@@ -25,4 +26,10 @@ test('church attendance dates and absence cutoff use PHT', () => {
   assert.deepEqual(getChurchAttendanceClock(date), { weekday: 'Sun', minutes: 30 });
   assert.equal(hasAttendanceCutoffPassed(new Date('2026-11-08T02:59:00.000Z')), false);
   assert.equal(hasAttendanceCutoffPassed(new Date('2026-11-08T03:00:00.000Z')), true);
+});
+
+test('Sunday check-in eligibility follows Philippine local midnight', () => {
+  assert.equal(isChurchAttendanceSunday(new Date('2026-11-07T15:59:59.000Z')), false);
+  assert.equal(isChurchAttendanceSunday(new Date('2026-11-07T16:00:00.000Z')), true);
+  assert.equal(isChurchAttendanceSunday(new Date('2026-11-08T16:00:00.000Z')), false);
 });

@@ -59,10 +59,14 @@ Secondary designations create ministry teams automatically: for example,
 designations can enroll them in multiple teams. Designated members can view
 their teams and the active member directory through `GET /api/groups/my-teams`.
 Leaders can add a registered active member with `POST /api/groups/team-members`
-using `teamId` and `userId`. These ministry teams are separate from the three numbered KSP
-attendance groups, whose assignment continues to control attendance grouping.
-The QR scanner and its attendance endpoints require the KSP Leader secondary
-designation. Google and Facebook users can set an email/password credential in
+using `teamId` and `userId`, or remove a team assignment with
+`DELETE /api/groups/team-members/:teamId/:userId`. KSP leaders can remove a
+member from their numbered group with `DELETE /api/groups/members/:userId`;
+these actions remove assignments, not user accounts. Ministry teams are separate
+from the three numbered KSP attendance groups. The QR scanner check-in endpoint
+accepts attendance only on Sunday in `CHURCH_TIME_ZONE` (Render is configured
+for `Asia/Manila`). The scanner and attendance endpoints require the KSP Leader
+secondary designation. Google and Facebook users can set an email/password credential in
 account settings; the authenticated `POST /api/auth/set-password` endpoint
 updates Firebase Authentication and stores a bcrypt hash in MongoDB. Firebase
 requires recent authentication before a password can be set or changed.
@@ -104,7 +108,9 @@ The built-in Bible reader offers the public translations provided by
 bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). NKJV is served by
 API.Bible because it is a licensed translation. Configure
 `VITE_API_BIBLE_KEY` in the frontend build environment and enable NKJV for that
-API.Bible key; without this configuration, the reader displays a clear setup
+API.Bible key. For Render, set it in the frontend static site's Environment
+settings (not the backend service), then redeploy the frontend so Vite includes
+it in the build. Without this configuration, the reader displays a clear setup
 error when NKJV is selected.
 
 ## Live reactions and notifications

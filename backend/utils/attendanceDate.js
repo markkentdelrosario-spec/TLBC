@@ -38,6 +38,10 @@ function getChurchAttendanceClock(date = new Date()) {
   };
 }
 
+function isChurchAttendanceSunday(date = new Date()) {
+  return getChurchAttendanceClock(date).weekday === 'Sun';
+}
+
 function getAttendanceStatus(date = new Date()) {
   const { minutes } = getChurchAttendanceClock(date);
   if (minutes < PRESENT_CUTOFF_MINUTES) return 'present';
@@ -87,6 +91,7 @@ module.exports = {
   buildAttendanceDateMatch,
   getAttendanceTimeZone,
   getAttendanceStatus,
+  isChurchAttendanceSunday,
   getChurchAttendanceDate,
   getChurchAttendanceClock,
   getChurchAttendanceSundayDate,

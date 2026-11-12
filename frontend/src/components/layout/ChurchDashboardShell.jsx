@@ -186,6 +186,9 @@ export default function ChurchDashboardShell({
 }) {
   const { user, firebaseUser, logout, refreshProfile, changePassword, setPassword } = useAuth();
   const { showToast } = useToast();
+  const isKspLeader =
+    user?.role === 'member' &&
+    hasDesignation(user, 'KSP Leader');
   const settingsRef = useRef(null);
   const notificationsRef = useRef(null);
   const bibleRequestVersion = useRef(0);
@@ -217,8 +220,14 @@ export default function ChurchDashboardShell({
   const [media, setMedia] = useState([]);
   const [leadershipGroup, setLeadershipGroup] = useState(null);
   const [groupError, setGroupError] = useState('');
+  const [smallGroup, setSmallGroup] = useState(null);
+  const [smallGroupLoading, setSmallGroupLoading] = useState(false);
+  const [smallGroupError, setSmallGroupError] = useState('');
+  const [smallGroupMessage, setSmallGroupMessage] = useState('');
+  const [smallGroupMemberRemoving, setSmallGroupMemberRemoving] = useState('');
   const [selectedTeamMembers, setSelectedTeamMembers] = useState({});
   const [groupMemberBusy, setGroupMemberBusy] = useState(false);
+  const [teamMemberRemoving, setTeamMemberRemoving] = useState('');
   const [groupMemberMessage, setGroupMemberMessage] = useState('');
   const [groupMemberError, setGroupMemberError] = useState('');
   const [mediaFile, setMediaFile] = useState(null);
@@ -293,6 +302,23 @@ export default function ChurchDashboardShell({
       apiBaseUrl,
     });
     setMedia(result.media || []);
+  }, [apiBaseUrl, getIdToken]);
+
+  const loadSmallGroup = useCallback(async () => {
+    setSmallGroup(null);
+    setSmallGroupLoading(true);
+    setSmallGroupError('');
+    try {
+      const result = await apiRequest('/groups/my-group', {
+        getIdToken,
+        apiBaseUrl,
+      });
+      setSmallGroup(result);
+    } catch (error) {
+      setSmallGroupError(getErrorMessage(error));
+    } finally {
+      setSmallGroupLoading(false);
+    }
   }, [apiBaseUrl, getIdToken]);
 
   useEffect(() => {
@@ -556,6 +582,7 @@ export default function ChurchDashboardShell({
           }
         });
     }
+    if (isKspLeader) loadSmallGroup();
     return () => {
       active = false;
     };
@@ -565,6 +592,8 @@ export default function ChurchDashboardShell({
     loadAnnouncements,
     loadBirthdays,
     loadMedia,
+    loadSmallGroup,
+    isKspLeader,
     user?.role,
     user?.secondaryDesignations,
     user?.secondaryDesignation,
@@ -700,9 +729,6 @@ export default function ChurchDashboardShell({
     user?.role === 'member' && getDesignations(user).length > 0;
   const canAddGroupMembers =
     user?.role === 'member' && hasLeadershipDesignation(user);
-  const isKspLeader =
-    user?.role === 'member' &&
-    hasDesignation(user, 'KSP Leader');
   const canViewReports =
     user?.role === 'admin';
   const canViewLeaderboard = ['admin', 'member'].includes(user?.role);
@@ -743,6 +769,66 @@ export default function ChurchDashboardShell({
       }
     } finally {
       if (requestVersion === bibleRequestVersion.current) setReaderLoading(false);
+    }
+  }
+
+  async function removeTeamMember(team, member) {
+    if (!window.confirm(`Remove ${member.name} from the ${team.name} team? Their account and other assignments will remain unchanged.`)) {
+      return;
+    }
+    const removalKey = `${team.id}:${member.id}`;
+    setTeamMemberRemoving(removalKey);
+    setGroupMemberError('');
+    setGroupMemberMessage('');
+    try {
+      const result = await apiRequest(
+        `/groups/team-members/${encodeURIComponent(team.id)}/${encodeURIComponent(member.id)}`,
+        { getIdToken, apiBaseUrl, method: 'DELETE' }
+      );
+      setLeadershipGroup((current) => current && ({
+        ...current,
+        teams: current.teams.map((item) =>
+          String(item.id) === String(team.id)
+            ? {
+                ...item,
+                members: item.members.filter(
+                  (currentMember) => String(currentMember.id) !== String(member.id)
+                ),
+              }
+            : item
+        ),
+      }));
+      setGroupMemberMessage(result.message);
+    } catch (error) {
+      setGroupMemberError(getErrorMessage(error));
+    } finally {
+      setTeamMemberRemoving('');
+    }
+  }
+
+  async function removeSmallGroupMember(member) {
+    if (!window.confirm(`Remove ${member.name} from ${smallGroup.group.name}? Their account will remain active, but their small-group assignment and QR attendance access will be removed.`)) {
+      return;
+    }
+    setSmallGroupMemberRemoving(String(member.id));
+    setSmallGroupError('');
+    setSmallGroupMessage('');
+    try {
+      const result = await apiRequest(
+        `/groups/members/${encodeURIComponent(member.id)}`,
+        { getIdToken, apiBaseUrl, method: 'DELETE' }
+      );
+      setSmallGroup((current) => current && ({
+        ...current,
+        members: current.members.filter(
+          (currentMember) => String(currentMember.id) !== String(member.id)
+        ),
+      }));
+      setSmallGroupMessage(result.message);
+    } catch (error) {
+      setSmallGroupError(getErrorMessage(error));
+    } finally {
+      setSmallGroupMemberRemoving('');
     }
   }
 
@@ -1794,7 +1880,12 @@ export default function ChurchDashboardShell({
                       <div className="max-h-64 overflow-auto">
                         <table className="min-w-full text-left text-sm">
                           <thead className="sticky top-0 border-b border-slate-100 bg-white text-[10px] uppercase tracking-wide text-slate-400">
-                            <tr><th className="py-2 pr-4">Member</th><th className="py-2">Email</th><th className="py-2">Designations</th></tr>
+                            <tr>
+                              <th className="py-2 pr-4">Member</th>
+                              <th className="py-2 pr-4">Email</th>
+                              <th className="py-2">Designations</th>
+                              {team.canManage && <th className="py-2 pl-3">Action</th>}
+                            </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50">
                             {team.members.map((member) => (
@@ -1802,6 +1893,22 @@ export default function ChurchDashboardShell({
                                 <td className="py-2 pr-4 font-medium text-slate-700">{member.name}</td>
                                 <td className="py-2 pr-4 text-slate-500">{member.email}</td>
                                 <td className="py-2 text-slate-500">{getDesignations(member).join(', ') || 'Member'}</td>
+                                {team.canManage && (
+                                  <td className="py-2 pl-3">
+                                    {String(member.id) === String(user?._id) ? (
+                                      <span className="text-xs text-slate-400">You</span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => removeTeamMember(team, member)}
+                                        disabled={teamMemberRemoving !== ''}
+                                        className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                                      >
+                                        {teamMemberRemoving === `${team.id}:${member.id}` ? 'Removing…' : 'Remove'}
+                                      </button>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -1874,6 +1981,51 @@ export default function ChurchDashboardShell({
               </details>
               {groupMemberError && <p role="alert" className="mt-2 text-sm text-red-700">{groupMemberError}</p>}
               {groupMemberMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{groupMemberMessage}</p>}
+            </section>
+          )}
+          {isKspLeader && (
+            <section className="mb-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">Leader tools</p>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">Your small group</h2>
+                <p className="mt-1 text-sm text-slate-500">Remove members who are no longer assigned to your group. Their account remains active.</p>
+              </div>
+              {smallGroupLoading ? (
+                <p role="status" className="py-4 text-center text-sm text-slate-500">Loading group members…</p>
+              ) : smallGroupError ? (
+                <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{smallGroupError}</p>
+              ) : smallGroup ? (
+                <>
+                  <p className="mb-3 text-sm font-semibold text-slate-700">{smallGroup.group.name}</p>
+                  {smallGroup.members.length ? (
+                    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                      {smallGroup.members.map((member) => (
+                        <li key={member.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-semibold text-slate-800">{member.name}</p>
+                            <p className="text-xs text-slate-500">{getDesignations(member).join(', ') || 'Member'}</p>
+                          </div>
+                          {String(member.id) === String(user?._id) ? (
+                            <span className="text-xs text-slate-400">You</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => removeSmallGroupMember(member)}
+                              disabled={smallGroupMemberRemoving !== ''}
+                              className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              {smallGroupMemberRemoving === String(member.id) ? 'Removing…' : 'Remove from group'}
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">No active members are assigned to this group.</p>
+                  )}
+                  {smallGroupMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{smallGroupMessage}</p>}
+                </>
+              ) : null}
             </section>
           )}
           {isKspLeader && (

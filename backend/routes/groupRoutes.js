@@ -129,6 +129,57 @@ router.post(
   }
 );
 
+router.delete(
+  '/team-members/:teamId/:userId',
+  authenticate,
+  authorizeSecondaryDesignation,
+  async (req, res, next) => {
+    const { teamId, userId } = req.params;
+    if (!mongoose.isValidObjectId(teamId) || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({
+        message: 'teamId and userId must be valid IDs.',
+      });
+    }
+    if (req.user._id.equals(userId)) {
+      return res.status(409).json({
+        message: 'You cannot remove yourself from a team you lead.',
+      });
+    }
+
+    try {
+      const team = await DesignationTeam.findById(teamId);
+      if (!team) {
+        return res.status(404).json({ message: 'Team not found.' });
+      }
+      const ledTeamKeys = getDesignations(req.user)
+        .filter((designation) => designation.endsWith('Leader'))
+        .map(getDesignationTeamKey);
+      if (!ledTeamKeys.includes(team.key)) {
+        return res.status(403).json({
+          message: 'You can only manage teams for your leadership designations.',
+        });
+      }
+
+      const result = await DesignationTeam.updateOne(
+        { _id: team._id, members: userId },
+        { $pull: { members: userId } }
+      );
+      if (!result.modifiedCount) {
+        return res.status(404).json({
+          message: 'This member is not assigned to the team.',
+        });
+      }
+
+      const user = await User.findById(userId).select('displayName');
+      return res.json({
+        message: `${user?.displayName || 'Member'} was removed from the ${team.name} team.`,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
 router.get('/my-group', authenticate, async (req, res, next) => {
   if (req.user.role !== 'member' || getDesignations(req.user).length === 0) {
     return res.status(403).json({
@@ -242,5 +293,64 @@ router.post('/members', authenticate, authorizeSecondaryDesignation, async (req,
     return next(error);
   }
 });
+
+router.delete(
+  '/members/:userId',
+  authenticate,
+  authorizeSecondaryDesignation,
+  async (req, res, next) => {
+    const { userId } = req.params;
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ message: 'userId must be a valid ID.' });
+    }
+    if (req.user._id.equals(userId)) {
+      return res.status(409).json({
+        message: 'You cannot remove yourself from your assigned group.',
+      });
+    }
+
+    try {
+      const leaderMembership = await Beneficiary.findOne({
+        user: req.user._id,
+        isActive: true,
+      }).populate('group', 'groupNumber name isActive');
+      if (!leaderMembership?.group?.isActive) {
+        return res.status(403).json({
+          message: 'You must be assigned to an active group to manage its members.',
+        });
+      }
+
+      const memberProfile = await Beneficiary.findOne({
+        user: userId,
+        group: leaderMembership.group._id,
+        isActive: true,
+      })
+        .populate('user', 'displayName')
+        .select('_id user');
+      if (!memberProfile) {
+        return res.status(404).json({
+          message: 'Active member not found in your group.',
+        });
+      }
+
+      const result = await Beneficiary.deleteOne({
+        _id: memberProfile._id,
+        group: leaderMembership.group._id,
+        isActive: true,
+      });
+      if (!result.deletedCount) {
+        return res.status(404).json({
+          message: 'Active member not found in your group.',
+        });
+      }
+
+      return res.json({
+        message: `${memberProfile.user?.displayName || 'Member'} was removed from ${leaderMembership.group.name}. Their account remains active.`,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
 
 module.exports = router;
