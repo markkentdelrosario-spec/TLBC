@@ -23,6 +23,13 @@ Set the prompted values in the Render dashboard:
 - If the frontend uses a custom domain, update `FRONTEND_URL` on the API service
   to that site's origin.
 
+The static site rewrites all unknown paths to `index.html` so client-side routes
+load on refresh. The frontend build also publishes `404.html` as a fallback for
+routes if the rewrite rule has not been applied to the Render service. For
+guaranteed `200` responses on refreshed client-side routes, manage the static
+site through the Blueprint or add the `/*` → `/index.html` rewrite in the Render
+Dashboard.
+
 The static site's `VITE_API_URL` is linked to the API service by the Blueprint.
 For local development, the frontend defaults to Vite's `/api` proxy at
 `http://localhost:5000`; set `VITE_API_URL` to use a different API host.
