@@ -114,9 +114,10 @@ async function registerManualAccount(req, res, next) {
     const existingUser = await User.findOne({ email }).select('_id isVerified');
     if (existingUser) {
       return res.status(409).json({
+        code: existingUser.isVerified ? 'ACCOUNT_ALREADY_EXISTS' : 'REGISTRATION_PENDING',
         message: existingUser.isVerified
           ? 'An account already exists for this Gmail address. Please sign in.'
-          : 'A registration is already pending for this Gmail address. Resend its verification code.',
+          : 'A registration is already pending for this Gmail address. Use the same password you originally entered, then resend the verification code if you did not receive it.',
       });
     }
 

@@ -68,6 +68,7 @@ async function registrationRequest(path, body) {
   if (!response.ok) {
     const error = new Error(payload.message || `Request failed with status ${response.status}.`);
     error.status = response.status;
+    error.code = payload.code;
     throw error;
   }
   return payload;
@@ -232,6 +233,11 @@ export default function Login() {
       setNotice(result.message);
       showToast(result.message, 'success');
     } catch (requestError) {
+      if (requestError?.code === 'REGISTRATION_PENDING') {
+        setRegistrationStep('code');
+        setNotice(requestError.message);
+        return;
+      }
       const message = getRegistrationError(requestError);
       setError(message);
       showToast(message, 'error');
