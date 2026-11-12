@@ -217,7 +217,7 @@ export default function ChurchDashboardShell({
   const [media, setMedia] = useState([]);
   const [leadershipGroup, setLeadershipGroup] = useState(null);
   const [groupError, setGroupError] = useState('');
-  const [groupMemberEmail, setGroupMemberEmail] = useState('');
+  const [selectedTeamMembers, setSelectedTeamMembers] = useState({});
   const [groupMemberBusy, setGroupMemberBusy] = useState(false);
   const [groupMemberMessage, setGroupMemberMessage] = useState('');
   const [groupMemberError, setGroupMemberError] = useState('');
@@ -546,7 +546,7 @@ export default function ChurchDashboardShell({
       loadMedia().catch((error) => {
         if (active) setMediaError(getErrorMessage(error));
       });
-      apiRequest('/groups/my-group', { getIdToken, apiBaseUrl })
+      apiRequest('/groups/my-teams', { getIdToken, apiBaseUrl })
         .then((result) => {
           if (active) setLeadershipGroup(result);
         })
@@ -695,7 +695,9 @@ export default function ChurchDashboardShell({
   const profileName = user?.name || 'Church member';
   const photo = user?.profilePicture;
   const designationText = getDesignations(user).join(', ');
-  const isLeader = user?.role === 'member' && getDesignations(user).length > 0;
+  const isLeader = user?.role === 'member' && hasLeadershipDesignation(user);
+  const hasDesignatedTeam =
+    user?.role === 'member' && getDesignations(user).length > 0;
   const canAddGroupMembers =
     user?.role === 'member' && hasLeadershipDesignation(user);
   const isKspLeader =
@@ -916,18 +918,25 @@ export default function ChurchDashboardShell({
     setGroupMemberError('');
     setGroupMemberMessage('');
     try {
-      const result = await apiRequest('/groups/members', {
+      const formData = new FormData(event.currentTarget);
+      const result = await apiRequest('/groups/team-members', {
         getIdToken,
         apiBaseUrl,
         method: 'POST',
-        body: JSON.stringify({ email: groupMemberEmail.trim() }),
+        body: JSON.stringify({
+          teamId: formData.get('teamId'),
+          userId: formData.get('userId'),
+        }),
       });
-      const updatedGroup = await apiRequest('/groups/my-group', {
+      const updatedGroup = await apiRequest('/groups/my-teams', {
         getIdToken,
         apiBaseUrl,
       });
       setLeadershipGroup(updatedGroup);
-      setGroupMemberEmail('');
+      setSelectedTeamMembers((current) => ({
+        ...current,
+        [formData.get('teamId')]: '',
+      }));
       setGroupMemberMessage(result.message);
     } catch (error) {
       setGroupMemberError(getErrorMessage(error));
@@ -1764,58 +1773,107 @@ export default function ChurchDashboardShell({
             </p>
           </section>
 
-          {isLeader && leadershipGroup && (
-            <section className="mb-6 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">Leader tools</p>
-              <div className="mt-1 flex flex-wrap items-end justify-between gap-2">
+          {hasDesignatedTeam && leadershipGroup && (
+            <section className="mb-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">{leadershipGroup.group.name}</h2>
-                  <p className="text-sm text-slate-500">Group {leadershipGroup.group.groupNumber} · {leadershipGroup.members.length} members</p>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">Leader tools</p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">Your ministry teams</h2>
                 </div>
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{designationText}</span>
+                <span className="text-xs text-slate-500">{leadershipGroup.teams.length} team{leadershipGroup.teams.length === 1 ? '' : 's'}</span>
               </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="border-b border-slate-100 text-[10px] uppercase tracking-wide text-slate-400">
-                    <tr><th className="py-2 pr-4">Member</th><th className="py-2">Designation</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {leadershipGroup.members.map((member) => (
-                      <tr key={member.id}>
-                        <td className="py-2.5 pr-4 font-medium text-slate-700">{member.name}</td>
-                        <td className="py-2.5 text-slate-500">{getDesignations(member).join(', ') || 'Member'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+              <div className="mt-3 space-y-2">
+                {leadershipGroup.teams.map((team) => (
+                  <details key={team.id} className="rounded-xl border border-slate-200">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                      <span>{team.name} <span className="font-normal text-slate-500">· {team.members.length} members</span></span>
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">{team.designations.join(', ')}</span>
+                    </summary>
+                    <div className="border-t border-slate-100 p-3">
+                      <div className="max-h-64 overflow-auto">
+                        <table className="min-w-full text-left text-sm">
+                          <thead className="sticky top-0 border-b border-slate-100 bg-white text-[10px] uppercase tracking-wide text-slate-400">
+                            <tr><th className="py-2 pr-4">Member</th><th className="py-2">Email</th><th className="py-2">Designations</th></tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {team.members.map((member) => (
+                              <tr key={member.id}>
+                                <td className="py-2 pr-4 font-medium text-slate-700">{member.name}</td>
+                                <td className="py-2 pr-4 text-slate-500">{member.email}</td>
+                                <td className="py-2 text-slate-500">{getDesignations(member).join(', ') || 'Member'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {canAddGroupMembers && team.canManage && (
+                        <form onSubmit={addGroupMember} className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row">
+                          <input type="hidden" name="teamId" value={team.id} />
+                          <label className="min-w-0 flex-1 text-xs font-semibold text-slate-700">
+                            Add an active member
+                            <select
+                              required
+                              name="userId"
+                              value={selectedTeamMembers[team.id] || ''}
+                              onChange={(event) =>
+                                setSelectedTeamMembers((current) => ({
+                                  ...current,
+                                  [team.id]: event.target.value,
+                                }))
+                              }
+                              className="mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-normal text-slate-900 outline-none focus:border-violet-400"
+                            >
+                              <option value="">Select a member</option>
+                              {leadershipGroup.availableMembers.map((member) => (
+                                <option
+                                  key={member.id}
+                                  value={member.id}
+                                  disabled={team.members.some((item) => item.id === member.id)}
+                                >
+                                  {member.name} · {member.email}
+                                  {team.members.some((item) => item.id === member.id) ? ' (already assigned)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="submit"
+                            disabled={groupMemberBusy || !selectedTeamMembers[team.id]}
+                            className="min-h-10 self-end rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                          >
+                            {groupMemberBusy ? 'Adding…' : 'Add to team'}
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  </details>
+                ))}
               </div>
-              {canAddGroupMembers && (
-                <form onSubmit={addGroupMember} className="mt-4 border-t border-slate-100 pt-4">
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Add a registered member by email
-                    <span className="mt-2 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="email"
-                        required
-                        maxLength={254}
-                        value={groupMemberEmail}
-                        onChange={(event) => setGroupMemberEmail(event.target.value)}
-                        className="min-h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-violet-400"
-                        placeholder="member@example.com"
-                      />
-                      <button
-                        type="submit"
-                        disabled={groupMemberBusy}
-                        className="min-h-10 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-                      >
-                        {groupMemberBusy ? 'Adding…' : 'Add to group'}
-                      </button>
-                    </span>
-                  </label>
-                  {groupMemberError && <p role="alert" className="mt-2 text-sm text-red-700">{groupMemberError}</p>}
-                  {groupMemberMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{groupMemberMessage}</p>}
-                </form>
-              )}
+
+              <details className="mt-3 rounded-xl border border-slate-200">
+                <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500">
+                  Browse all active members ({leadershipGroup.availableMembers.length})
+                </summary>
+                <div className="max-h-80 overflow-auto border-t border-slate-100 px-3">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="sticky top-0 border-b border-slate-100 bg-white text-[10px] uppercase tracking-wide text-slate-400">
+                      <tr><th className="py-2 pr-4">Member</th><th className="py-2 pr-4">Email</th><th className="py-2">Designations</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {leadershipGroup.availableMembers.map((member) => (
+                        <tr key={member.id}>
+                          <td className="py-2 pr-4 font-medium text-slate-700">{member.name}</td>
+                          <td className="py-2 pr-4 text-slate-500">{member.email}</td>
+                          <td className="py-2 text-slate-500">{getDesignations(member).join(', ') || 'Member'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+              {groupMemberError && <p role="alert" className="mt-2 text-sm text-red-700">{groupMemberError}</p>}
+              {groupMemberMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{groupMemberMessage}</p>}
             </section>
           )}
           {isKspLeader && (
@@ -1824,7 +1882,7 @@ export default function ChurchDashboardShell({
               apiBaseUrl={apiBaseUrl}
             />
           )}
-          {isLeader && groupError && (
+          {hasDesignatedTeam && groupError && (
             <p role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               Group tools are unavailable: {groupError}
             </p>

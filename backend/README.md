@@ -1,5 +1,31 @@
 # Backend configuration
 
+## Local API and Cloudinary uploads
+
+Start the API from this directory with `npm start` (or `npm run dev`). The
+server loads `backend/.env` by file path, requires a valid `MONGODB_URI`, and
+listens on port 5000 by default. It does not print connection strings or
+Cloudinary credentials. Cloudinary is optional for starting the API, but the
+upload routes return HTTP 503 when any of these settings is missing:
+`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`.
+Restart the API after changing `.env`.
+
+Vite proxies `/api` and `/socket.io` to `http://127.0.0.1:5000` by default.
+Set `VITE_API_PROXY_TARGET` in the shell before starting Vite only when the API
+uses another host or port. Check `http://127.0.0.1:5000/api/health` directly:
+an HTTP response confirms the API listener is reachable. If that check fails,
+read the backend terminal first; a failed MongoDB connection prevents the API
+from listening and makes Vite report a proxy error before any upload route runs.
+Vite logs proxy connection errors with the upstream host and error code.
+
+An HTTP 502 returned by the upload route after the API receives the request is a
+different failure: it means the API could not complete its Cloudinary request.
+The backend logs the Cloudinary HTTP status and request ID, when provided, but
+never the configured credentials. Check that the local Cloudinary variables
+belong to the same active Cloudinary account. For Render, set the three
+variables in the service Environment settings; local `.env` files are not
+deployed.
+
 Manual Gmail registration stores a pending MongoDB profile and a bcrypt-hashed
 password/OTP, then emails a six-digit code. Firebase Authentication account
 creation and account activation happen only after the code is verified. Configure
@@ -27,8 +53,14 @@ Attendance dates and evaluations use `CHURCH_TIME_ZONE` (default
 8:30 AM until before 11:00 AM are Late. The API records Absent for active group
 members without a check-in once the Sunday 11:00 AM cutoff passes.
 
-Members with a leadership secondary designation can add an active member to their own
-assigned group through `POST /api/groups/members` using the member's email.
+Secondary designations create ministry teams automatically: for example,
+`KSP Leader` maps to the `KSP` team, `Youth Leader` to `Youth`, and both
+`Worship Leader` and `Worship Team Member` to `Worship Team`. A member's multiple
+designations can enroll them in multiple teams. Designated members can view
+their teams and the active member directory through `GET /api/groups/my-teams`.
+Leaders can add a registered active member with `POST /api/groups/team-members`
+using `teamId` and `userId`. These ministry teams are separate from the three numbered KSP
+attendance groups, whose assignment continues to control attendance grouping.
 The QR scanner and its attendance endpoints require the KSP Leader secondary
 designation. Google and Facebook users can set an email/password credential in
 account settings; the authenticated `POST /api/auth/set-password` endpoint

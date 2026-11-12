@@ -52,10 +52,23 @@ export default function MemberQRCode({
     setDownloading(true);
     setDownloadError('');
     try {
+      const { width, height } = cardRef.current.getBoundingClientRect();
+      const captureWidth = Math.ceil(width);
+      const captureHeight = Math.ceil(height);
       const dataUrl = await toPng(cardRef.current, {
         backgroundColor: '#ffffff',
         cacheBust: true,
+        width: captureWidth,
+        height: captureHeight,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
         pixelRatio: 3,
+        style: {
+          margin: '0',
+          maxWidth: `${captureWidth}px`,
+          transform: 'none',
+          width: `${captureWidth}px`,
+        },
       });
       const link = document.createElement('a');
       link.download = `church-id-${String(userId).replace(/[^a-zA-Z0-9_-]/g, '-')}.png`;
@@ -128,7 +141,7 @@ export default function MemberQRCode({
 
             <div
               ref={cardRef}
-              className="digital-id-card mx-3 mb-3 shrink-0 overflow-hidden rounded-3xl border border-slate-200 bg-white sm:mx-4"
+              className="digital-id-card mb-3 w-full max-w-[640px] shrink-0 self-center overflow-hidden rounded-3xl border border-slate-200 bg-white"
             >
               <header className="flex items-center gap-3 bg-emerald-950 px-4 py-4 text-white">
                 <img

@@ -1,13 +1,133 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const {
   authenticate,
   authorizeSecondaryDesignation,
 } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
-const { getDesignations } = require('../utils/designations');
+const DesignationTeam = require('../models/DesignationTeam');
+const {
+  getDesignations,
+  getDesignationTeamKey,
+} = require('../utils/designations');
 const User = require('../models/User');
+const { ensureDesignationTeamMemberships } = require('../services/designationTeams');
 
 const router = express.Router();
+
+router.get('/my-teams', authenticate, async (req, res, next) => {
+  const designations = getDesignations(req.user);
+  const leadershipDesignations = designations.filter((designation) =>
+    designation.endsWith('Leader')
+  );
+  if (req.user.role !== 'member' || designations.length === 0) {
+    return res.status(403).json({
+      message: 'A secondary designation is required for team tools.',
+    });
+  }
+
+  try {
+    await ensureDesignationTeamMemberships(req.user);
+    const teamKeys = [...new Set(designations.map(getDesignationTeamKey))];
+    const ledTeamKeys = new Set(leadershipDesignations.map(getDesignationTeamKey));
+    const [teams, users] = await Promise.all([
+      DesignationTeam.find({ key: { $in: teamKeys } })
+        .populate('members', 'displayName email secondaryDesignations profilePicture isActive')
+        .sort({ name: 1 })
+        .lean(),
+      User.find({ role: 'member', isActive: true })
+        .select('displayName email secondaryDesignations')
+        .sort({ displayName: 1 })
+        .lean(),
+    ]);
+
+    return res.json({
+      teams: teams.map((team) => ({
+        id: team._id,
+        designations: designations.filter(
+          (designation) => getDesignationTeamKey(designation) === team.key
+        ),
+        canManage: ledTeamKeys.has(team.key),
+        name: team.name,
+        members: team.members
+          .filter((member) => member.isActive)
+          .map((member) => ({
+            id: member._id,
+            name: member.displayName,
+            email: member.email,
+            secondaryDesignations: member.secondaryDesignations || [],
+            profilePicture: member.profilePicture || null,
+          })),
+      })),
+      availableMembers: users.map((user) => ({
+        id: user._id,
+        name: user.displayName,
+        email: user.email,
+        secondaryDesignations: user.secondaryDesignations || [],
+      })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post(
+  '/team-members',
+  authenticate,
+  authorizeSecondaryDesignation,
+  async (req, res, next) => {
+    const { teamId, userId } = req.body || {};
+    if (!mongoose.isValidObjectId(teamId) || !mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({
+        message: 'teamId and userId must be valid IDs.',
+      });
+    }
+
+    try {
+      const team = await DesignationTeam.findById(teamId);
+      if (!team) {
+        return res.status(404).json({ message: 'Team not found.' });
+      }
+      const ledTeamKeys = getDesignations(req.user)
+        .filter((designation) => designation.endsWith('Leader'))
+        .map(getDesignationTeamKey);
+      if (!ledTeamKeys.includes(team.key)) {
+        return res.status(403).json({
+          message: 'You can only manage teams for your leadership designations.',
+        });
+      }
+
+      const user = await User.findOne({
+        _id: userId,
+        role: 'member',
+        isActive: true,
+      }).select('_id displayName email secondaryDesignations');
+      if (!user) {
+        return res.status(404).json({
+          message: 'No active member account was found.',
+        });
+      }
+      const membershipUpdate = await DesignationTeam.updateOne(
+        { _id: team._id, members: { $ne: user._id } },
+        { $addToSet: { members: user._id } }
+      );
+      if (!membershipUpdate.matchedCount) {
+        return res.status(404).json({ message: 'Team not found.' });
+      }
+      if (!membershipUpdate.modifiedCount) {
+        return res.status(409).json({
+          message: 'This member is already in the team.',
+        });
+      }
+
+      return res.status(201).json({
+        message: `${user.displayName} was added to the ${team.name} team.`,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
 
 router.get('/my-group', authenticate, async (req, res, next) => {
   if (req.user.role !== 'member' || getDesignations(req.user).length === 0) {

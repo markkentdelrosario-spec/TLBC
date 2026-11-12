@@ -45,9 +45,20 @@ function hasLeadershipDesignation(user) {
   return getDesignations(user).some((designation) => designation.endsWith('Leader'));
 }
 
+function getDesignationTeamName(designation) {
+  const name = designation.replace(/ (?:Leader|Member)$/, '');
+  return name === 'Worship' ? 'Worship Team' : name;
+}
+
+function getDesignationTeamKey(designation) {
+  return getDesignationTeamName(designation).toLowerCase().replace(/\s+/g, '-');
+}
+
 module.exports = {
   SECONDARY_DESIGNATIONS,
   getDesignations,
+  getDesignationTeamName,
+  getDesignationTeamKey,
   hasDesignation,
   hasLeadershipDesignation,
 };

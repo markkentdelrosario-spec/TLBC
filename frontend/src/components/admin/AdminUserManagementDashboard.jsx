@@ -51,6 +51,7 @@ export default function AdminUserManagementDashboard({
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
   const [designationMenuUserId, setDesignationMenuUserId] = useState('');
+  const [expandedUserId, setExpandedUserId] = useState('');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -227,31 +228,39 @@ export default function AdminUserManagementDashboard({
                 const draft = drafts[userId] || {};
                 const canAssignDesignations = ['member', 'admin'].includes(draft.role);
                 return (
-                  <article
-                    className={`relative grid min-w-0 grid-cols-1 gap-4 p-4 sm:p-6 md:grid-cols-2 xl:grid-cols-[minmax(9.5rem,1.4fr)_minmax(8rem,.9fr)_minmax(9rem,1.2fr)_minmax(7.5rem,.9fr)_auto] xl:items-end xl:gap-2.5 xl:p-3 ${designationMenuUserId === userId ? 'z-30' : ''}`}
+                  <details
+                    open={expandedUserId === userId}
+                    onToggle={(event) =>
+                      setExpandedUserId(event.currentTarget.open ? userId : '')
+                    }
+                    className={`relative min-w-0 ${designationMenuUserId === userId ? 'z-30' : ''}`}
                     key={userId}
                   >
-                    <div className="flex min-w-0 items-center gap-3">
-                      {user.profilePicture || user.profilePhoto?.url ? (
-                        <img
-                          src={user.profilePicture || user.profilePhoto.url}
-                          alt=""
-                          className="h-10 w-10 shrink-0 rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100">
-                          {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold">{user.displayName || 'Unnamed account'}</p>
-                        <p className="mt-1 truncate text-sm text-slate-500">{user.email}</p>
-                        {user.phoneNumber && (
-                          <p className="mt-1 text-xs text-slate-500">{user.phoneNumber}</p>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 dark:hover:bg-slate-800 sm:px-6">
+                      <span className="flex min-w-0 items-center gap-3">
+                        {user.profilePicture || user.profilePhoto?.url ? (
+                          <img
+                            src={user.profilePicture || user.profilePhoto.url}
+                            alt=""
+                            className="h-10 w-10 shrink-0 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-100 font-bold text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100">
+                            {(user.displayName || user.email || '?').charAt(0).toUpperCase()}
+                          </span>
                         )}
-                      </div>
-                    </div>
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold">{user.displayName || 'Unnamed account'}</span>
+                          <span className="mt-1 block truncate text-sm text-slate-500">{user.email}</span>
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-3 text-xs text-slate-500">
+                        <span className="hidden sm:inline">{ROLES.find((role) => role.value === getSystemRole(user))?.label || 'Member'} · {getDesignations(user).length} designation{getDesignations(user).length === 1 ? '' : 's'}</span>
+                        <span aria-hidden="true">{expandedUserId === userId ? '−' : '+'}</span>
+                      </span>
+                    </summary>
 
+                    <div className="grid min-w-0 grid-cols-1 gap-4 border-t border-slate-100 p-4 dark:border-slate-800 sm:p-6 md:grid-cols-2 xl:grid-cols-[minmax(8rem,.9fr)_minmax(9rem,1.2fr)_minmax(7.5rem,.9fr)_auto] xl:items-end xl:gap-2.5 xl:p-3">
                     <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                       System role
                       <select
@@ -348,7 +357,8 @@ export default function AdminUserManagementDashboard({
                     >
                       {savingId === userId ? 'Saving…' : 'Save'}
                     </button>
-                  </article>
+                    </div>
+                  </details>
                 );
               })}
             </div>

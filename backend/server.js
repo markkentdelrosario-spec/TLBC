@@ -1,4 +1,11 @@
-require('dotenv').config();
+const fs = require('node:fs');
+const path = require('node:path');
+const dotenv = require('dotenv');
+
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+}
 
 const mongoose = require('mongoose');
 const app = require('./app');
@@ -11,17 +18,45 @@ const {
   getChurchAttendanceClock,
   getChurchAttendanceSundayDate,
 } = require('./utils/attendanceDate');
+const {
+  getMissingCloudinarySettings,
+} = require('./config/cloudinary');
 
-const port = Number(process.env.PORT) || 5000;
-const mongoUri = process.env.MONGODB_URI;
+const port = process.env.PORT ? Number(process.env.PORT) : 5000;
+const mongoUri = process.env.MONGODB_URI?.trim();
 
 if (!mongoUri) {
   throw new Error('MONGODB_URI is required to start the API server.');
 }
+if (!/^mongodb(?:\+srv)?:\/\//i.test(mongoUri)) {
+  throw new Error('MONGODB_URI must be a mongodb:// or mongodb+srv:// connection string.');
+}
+if (
+  !Number.isInteger(port) ||
+  port < 1 ||
+  port > 65535
+) {
+  throw new Error('PORT must be an integer between 1 and 65535.');
+}
 
 async function startServer() {
   User.schema.set('autoIndex', false);
-  await mongoose.connect(mongoUri);
+  try {
+    await mongoose.connect(mongoUri);
+  } catch (error) {
+    const startupError = new Error(
+      'MongoDB connection failed. Check MONGODB_URI, Atlas network access, and database availability.'
+    );
+    startupError.name = error.name || 'MongoConnectionError';
+    startupError.code = error.code;
+    throw startupError;
+  }
+  const missingCloudinarySettings = getMissingCloudinarySettings();
+  if (missingCloudinarySettings.length) {
+    console.warn(
+      `Cloudinary uploads are disabled; missing environment settings: ${missingCloudinarySettings.join(', ')}.`
+    );
+  }
   const collectionExists = await mongoose.connection.db
     .listCollections(
       { name: AttendanceLog.collection.name },
@@ -122,6 +157,10 @@ async function startServer() {
 }
 
 startServer().catch((error) => {
-  console.error('Unable to start The Life Builder Church API.', error);
+  console.error('Unable to start The Life Builder Church API.', {
+    name: error.name,
+    code: error.code || null,
+    message: error.message,
+  });
   process.exitCode = 1;
 });

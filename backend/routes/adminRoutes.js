@@ -4,6 +4,7 @@ const { authenticate, authorizeRoles } = require('../middleware/authMiddleware')
 const Beneficiary = require('../models/Beneficiary');
 const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
+const { ensureDesignationTeamMemberships } = require('../services/designationTeams');
 const {
   SECONDARY_DESIGNATIONS,
   getDesignations,
@@ -173,6 +174,7 @@ router.patch('/users/:userId/role', ...adminOnly, async (req, res, next) => {
       await Beneficiary.deleteOne({ user: targetUser._id });
     }
     await targetUser.save();
+    await ensureDesignationTeamMemberships(targetUser);
     return res.json({
       message: 'User role updated.',
       user: {
@@ -239,8 +241,8 @@ router.patch(
         { $set: { secondaryDesignations } },
         { new: true, runValidators: true }
       )
-        .select('_id displayName email role secondaryDesignations profilePicture profilePhoto phoneNumber birthDate')
-        .lean();
+        .select('_id displayName email role secondaryDesignations profilePicture profilePhoto phoneNumber birthDate');
+      await ensureDesignationTeamMemberships(user);
       return res.json({
         message: 'Secondary designation updated.',
         user: {

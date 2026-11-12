@@ -10,9 +10,16 @@ const notificationRoutes = require('./notificationRoutes');
 const verseRoutes = require('./verseRoutes');
 const uploadRoutes = require('./uploadRoutes');
 const slideshowRoutes = require('./slideshowRoutes');
+const mongoose = require('mongoose');
 
 const router = express.Router();
 
+router.get('/health', (req, res) => {
+  return res.json({
+    status: 'ok',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  });
+});
 router.use('/auth', authRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/slideshows', slideshowRoutes);
