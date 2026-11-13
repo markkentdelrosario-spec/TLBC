@@ -17,7 +17,8 @@ const visitorFormUrl =
 const titleFirstLine = 'The Life Builder';
 const titleLastLine = 'Church';
 const fullTitle = `${titleFirstLine} ${titleLastLine}`;
-const TITLE_ANIMATION_INTERVAL_MS = 55;
+const TITLE_ANIMATION_INTERVAL_MS = (5 * 1000) / fullTitle.length;
+const TITLE_ANIMATION_PAUSE_MS = 3000;
 const sectionClass = 'scroll-mt-24 px-4 py-16 sm:px-8 sm:py-20 lg:py-24';
 const contentClass = 'mx-auto w-full max-w-6xl';
 
@@ -27,42 +28,43 @@ export default function LandingPage() {
   const [offerOnlineOpen, setOfferOnlineOpen] = useState(false);
   const [titleAnimation, setTitleAnimation] = useState({
     characters: 0,
-    direction: 1,
-    pauseTicks: 4,
+    phase: 'typing',
   });
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setTitleAnimation((animation) => ({
-        ...animation,
-        characters: fullTitle.length,
-      }));
+      setTitleAnimation((animation) => animation.characters === fullTitle.length
+        ? animation
+        : { ...animation, characters: fullTitle.length });
       return undefined;
     }
 
-    const intervalId = window.setInterval(() => {
+    const timeoutId = window.setTimeout(() => {
       setTitleAnimation((animation) => {
-        if (animation.pauseTicks > 0) {
-          return { ...animation, pauseTicks: animation.pauseTicks - 1 };
+        if (animation.phase === 'pause') {
+          return { ...animation, phase: 'deleting' };
         }
 
-        if (animation.direction === 1) {
-          if (animation.characters >= fullTitle.length) {
-            return { ...animation, direction: -1, pauseTicks: 12 };
-          }
-          return { ...animation, characters: animation.characters + 1 };
+        if (animation.phase === 'typing') {
+          const characters = animation.characters + 1;
+          return {
+            characters,
+            phase: characters === fullTitle.length ? 'pause' : 'typing',
+          };
         }
 
-        if (animation.characters <= 0) {
-          return { ...animation, direction: 1, pauseTicks: 4 };
-        }
-
-        return { ...animation, characters: animation.characters - 1 };
+        const characters = animation.characters - 1;
+        return {
+          characters,
+          phase: characters === 0 ? 'typing' : 'deleting',
+        };
       });
-    }, TITLE_ANIMATION_INTERVAL_MS);
+    }, titleAnimation.phase === 'pause'
+      ? TITLE_ANIMATION_PAUSE_MS
+      : TITLE_ANIMATION_INTERVAL_MS);
 
-    return () => window.clearInterval(intervalId);
-  }, []);
+    return () => window.clearTimeout(timeoutId);
+  }, [titleAnimation]);
 
   function closeMobileMenu() {
     setMobileMenuOpen(false);
@@ -172,7 +174,7 @@ export default function LandingPage() {
             </p>
             <h1
               aria-label={fullTitle}
-              className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl"
+              className="mt-4 min-h-[calc(2.1em+0.5rem)] text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl"
             >
               <span aria-hidden="true" className="block">
                 {fullTitle.slice(0, Math.min(titleAnimation.characters, titleFirstLine.length))}
