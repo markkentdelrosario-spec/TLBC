@@ -46,7 +46,7 @@ test('registration email uses Brevo and escapes the display name', async () => {
 
   assert.deepEqual(sentEmail.sender, {
     name: 'The Life Builder Church',
-    email: 'thelifebuilderchurch@gmail.com',
+    email: 'delrosariomarkkent@gmail.com',
   });
   assert.deepEqual(sentEmail.to, [{ email: 'member@gmail.com' }]);
   assert.match(sentEmail.htmlContent, /&lt;Member&gt;/);

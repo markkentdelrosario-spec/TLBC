@@ -40,7 +40,7 @@ Create an API key in the [Brevo API settings](https://app.brevo.com/settings/key
 then set `BREVO_API_KEY` in `backend/.env` for local development and in the
 Render API service's Environment settings for deployment. Do not commit the
 key. Registration verification emails use the sender
-`The Life Builder Church <thelifebuilderchurch@gmail.com>`. Verify that sender
+`The Life Builder Church <delrosariomarkkent@gmail.com>`. Verify that sender
 in Brevo before sending; Brevo rejects unverified senders. Email requests use a
 30-second timeout without SDK retries to avoid long waits and duplicate sends.
 The API reports a delivery error if Brevo rejects or cannot complete the email.

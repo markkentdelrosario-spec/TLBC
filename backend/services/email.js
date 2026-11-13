@@ -62,7 +62,7 @@ async function sendRegistrationOtp(brevo, email, displayName, otp) {
         </div>`,
       sender: {
         name: 'The Life Builder Church',
-        email: 'thelifebuilderchurch@gmail.com',
+        email: 'delrosariomarkkent@gmail.com',
       },
       to: [{ email }],
     }, {
