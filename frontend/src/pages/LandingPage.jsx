@@ -17,6 +17,7 @@ const visitorFormUrl =
 const titleFirstLine = 'The Life Builder';
 const titleLastLine = 'Church';
 const fullTitle = `${titleFirstLine} ${titleLastLine}`;
+const TITLE_ANIMATION_INTERVAL_MS = 55;
 const sectionClass = 'scroll-mt-24 px-4 py-16 sm:px-8 sm:py-20 lg:py-24';
 const contentClass = 'mx-auto w-full max-w-6xl';
 
@@ -24,35 +25,41 @@ export default function LandingPage() {
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [offerOnlineOpen, setOfferOnlineOpen] = useState(false);
-  const [typedCharacters, setTypedCharacters] = useState(0);
+  const [titleAnimation, setTitleAnimation] = useState({
+    characters: 0,
+    direction: 1,
+    pauseTicks: 4,
+  });
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setTypedCharacters(fullTitle.length);
+      setTitleAnimation((animation) => ({
+        ...animation,
+        characters: fullTitle.length,
+      }));
       return undefined;
     }
 
-    let direction = 1;
-    let pauseTicks = 0;
     const intervalId = window.setInterval(() => {
-      setTypedCharacters((characters) => {
-        if (pauseTicks > 0) {
-          pauseTicks -= 1;
-          return characters;
+      setTitleAnimation((animation) => {
+        if (animation.pauseTicks > 0) {
+          return { ...animation, pauseTicks: animation.pauseTicks - 1 };
         }
-        if (characters >= fullTitle.length) {
-          direction = -1;
-          pauseTicks = 12;
-          return characters;
+
+        if (animation.direction === 1) {
+          if (animation.characters >= fullTitle.length) {
+            return { ...animation, direction: -1, pauseTicks: 12 };
+          }
+          return { ...animation, characters: animation.characters + 1 };
         }
-        if (characters <= 0) {
-          direction = 1;
-          pauseTicks = 4;
-          return characters;
+
+        if (animation.characters <= 0) {
+          return { ...animation, direction: 1, pauseTicks: 4 };
         }
-        return characters + direction;
+
+        return { ...animation, characters: animation.characters - 1 };
       });
-    }, 75);
+    }, TITLE_ANIMATION_INTERVAL_MS);
 
     return () => window.clearInterval(intervalId);
   }, []);
@@ -168,15 +175,15 @@ export default function LandingPage() {
               className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl"
             >
               <span aria-hidden="true" className="block">
-                {fullTitle.slice(0, Math.min(typedCharacters, titleFirstLine.length))}
-                {typedCharacters <= titleFirstLine.length && (
+                {fullTitle.slice(0, Math.min(titleAnimation.characters, titleFirstLine.length))}
+                {titleAnimation.characters <= titleFirstLine.length && (
                   <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-amber-100 motion-reduce:animate-none" />
                 )}
               </span>
               <span aria-hidden="true" className="mt-2 block font-serif italic text-amber-100">
-                {typedCharacters > titleFirstLine.length &&
-                  titleLastLine.slice(0, typedCharacters - titleFirstLine.length - 1)}
-                {typedCharacters > titleFirstLine.length && (
+                {titleAnimation.characters > titleFirstLine.length &&
+                  titleLastLine.slice(0, titleAnimation.characters - titleFirstLine.length - 1)}
+                {titleAnimation.characters > titleFirstLine.length && (
                   <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-amber-100 motion-reduce:animate-none" />
                 )}
               </span>
