@@ -6,6 +6,7 @@ import { apiBaseUrl } from '../config/api';
 import { LOCAL_WELCOME_SLIDES } from '../utils/localSlideshow';
 
 const LOGIN_TAGLINE = 'YOUR FAITH JOURNEY STARTS HERE.';
+const LOGIN_TAGLINE_INTERVAL_MS = 55;
 const inputClass =
   'mt-1.5 min-h-12 w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-800 focus:ring-2 focus:ring-teal-100';
 const primaryButtonClass =
@@ -114,35 +115,44 @@ export default function Login() {
   const [notice, setNotice] = useState('');
   const [visualIndex, setVisualIndex] = useState(0);
   const [previousVisualIndex, setPreviousVisualIndex] = useState(null);
-  const [typedTagline, setTypedTagline] = useState('');
+  const [taglineAnimation, setTaglineAnimation] = useState({
+    text: '',
+    direction: 1,
+    pauseTicks: 4,
+  });
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setTypedTagline(LOGIN_TAGLINE);
+      setTaglineAnimation((animation) => ({ ...animation, text: LOGIN_TAGLINE }));
       return undefined;
     }
 
-    let direction = 1;
-    let pauseTicks = 0;
     const timer = window.setInterval(() => {
-      setTypedTagline((tagline) => {
-        if (pauseTicks > 0) {
-          pauseTicks -= 1;
-          return tagline;
+      setTaglineAnimation((animation) => {
+        if (animation.pauseTicks > 0) {
+          return { ...animation, pauseTicks: animation.pauseTicks - 1 };
         }
-        if (tagline.length >= LOGIN_TAGLINE.length) {
-          direction = -1;
-          pauseTicks = 12;
-          return tagline;
+
+        if (animation.direction === 1) {
+          if (animation.text.length >= LOGIN_TAGLINE.length) {
+            return { ...animation, direction: -1, pauseTicks: 12 };
+          }
+          return {
+            ...animation,
+            text: LOGIN_TAGLINE.slice(0, animation.text.length + 1),
+          };
         }
-        if (tagline.length <= 0) {
-          direction = 1;
-          pauseTicks = 4;
-          return tagline;
+
+        if (animation.text.length <= 0) {
+          return { ...animation, direction: 1, pauseTicks: 4 };
         }
-        return LOGIN_TAGLINE.slice(0, tagline.length + direction);
+
+        return {
+          ...animation,
+          text: LOGIN_TAGLINE.slice(0, animation.text.length - 1),
+        };
       });
-    }, 55);
+    }, LOGIN_TAGLINE_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -351,7 +361,7 @@ export default function Login() {
               aria-label={LOGIN_TAGLINE}
               className="min-h-[3.2em] text-3xl font-black uppercase leading-[1.08] tracking-tight sm:text-4xl lg:text-5xl"
             >
-              {typedTagline}
+              {taglineAnimation.text}
               <span aria-hidden="true" className="ml-1 inline-block h-[0.85em] w-0.5 animate-pulse bg-amber-300 align-baseline motion-reduce:animate-none" />
             </h1>
             <p className="mt-5 max-w-md text-sm leading-6 text-white/90 sm:text-base">
