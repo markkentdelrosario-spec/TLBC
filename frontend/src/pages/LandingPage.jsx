@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import SereneBackdrop from '../components/layout/SereneBackdrop';
 import OfferOnlineModal from '../components/shared/OfferOnlineModal';
@@ -14,6 +14,9 @@ const navigationItems = [
 const visitorFormUrl =
   'https://docs.google.com/forms/d/e/1FAIpQLSdrRZWVqw-DfdQb94BG07sW5rTzrm-5g206O5E0jjp8Kr5vcg/viewform?embedded=true';
 
+const titleFirstLine = 'The Life Builder';
+const titleLastLine = 'Church';
+const fullTitle = `${titleFirstLine} ${titleLastLine}`;
 const sectionClass = 'scroll-mt-24 px-4 py-16 sm:px-8 sm:py-20 lg:py-24';
 const contentClass = 'mx-auto w-full max-w-6xl';
 
@@ -21,6 +24,26 @@ export default function LandingPage() {
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [offerOnlineOpen, setOfferOnlineOpen] = useState(false);
+  const [typedCharacters, setTypedCharacters] = useState(0);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTypedCharacters(fullTitle.length);
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setTypedCharacters((characters) => {
+        if (characters >= fullTitle.length) {
+          window.clearInterval(intervalId);
+          return characters;
+        }
+        return characters + 1;
+      });
+    }, 75);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   function closeMobileMenu() {
     setMobileMenuOpen(false);
@@ -128,10 +151,22 @@ export default function LandingPage() {
             <p className="text-sm font-bold uppercase tracking-[0.24em] text-emerald-200 sm:text-base">
               Welcome to
             </p>
-            <h1 className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl">
-              The Life Builder
-              <span className="mt-2 block font-serif italic text-amber-100">
-                Church
+            <h1
+              aria-label={fullTitle}
+              className="mt-4 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl lg:text-7xl"
+            >
+              <span aria-hidden="true" className="block">
+                {fullTitle.slice(0, Math.min(typedCharacters, titleFirstLine.length))}
+                {typedCharacters < fullTitle.length && typedCharacters <= titleFirstLine.length && (
+                  <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-amber-100 motion-reduce:animate-none" />
+                )}
+              </span>
+              <span aria-hidden="true" className="mt-2 block font-serif italic text-amber-100">
+                {typedCharacters > titleFirstLine.length &&
+                  titleLastLine.slice(0, typedCharacters - titleFirstLine.length - 1)}
+                {typedCharacters < fullTitle.length && typedCharacters > titleFirstLine.length && (
+                  <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-amber-100 motion-reduce:animate-none" />
+                )}
               </span>
             </h1>
             <p className="mt-7 max-w-2xl text-base leading-7 text-slate-100/85 sm:text-xl sm:leading-8">
@@ -166,9 +201,17 @@ export default function LandingPage() {
             <p className="mt-4 text-2xl font-semibold leading-snug text-white sm:text-3xl">
               Faith, fellowship, and service—growing together.
             </p>
+            <div className="mt-6 border-t border-white/15 pt-5">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-200">
+                Sunday Worship
+              </p>
+              <p className="mt-2 text-lg font-semibold text-white">
+                Every Sunday <span className="text-amber-200">·</span> 8:30 AM
+              </p>
+            </div>
             <a
               href="#connect-with-us"
-              className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-bold text-emerald-100 underline decoration-emerald-100/50 underline-offset-4 hover:text-white focus:outline-none focus:ring-2 focus:ring-amber-200"
+              className="mt-5 inline-flex min-h-11 items-center gap-2 text-sm font-bold text-emerald-100 underline decoration-emerald-100/50 underline-offset-4 hover:text-white focus:outline-none focus:ring-2 focus:ring-amber-200"
             >
               Plan a visit
               <span aria-hidden="true">→</span>
