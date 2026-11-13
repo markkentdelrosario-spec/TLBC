@@ -32,13 +32,25 @@ export default function LandingPage() {
       return undefined;
     }
 
+    let direction = 1;
+    let pauseTicks = 0;
     const intervalId = window.setInterval(() => {
       setTypedCharacters((characters) => {
-        if (characters >= fullTitle.length) {
-          window.clearInterval(intervalId);
+        if (pauseTicks > 0) {
+          pauseTicks -= 1;
           return characters;
         }
-        return characters + 1;
+        if (characters >= fullTitle.length) {
+          direction = -1;
+          pauseTicks = 12;
+          return characters;
+        }
+        if (characters <= 0) {
+          direction = 1;
+          pauseTicks = 4;
+          return characters;
+        }
+        return characters + direction;
       });
     }, 75);
 
@@ -157,14 +169,14 @@ export default function LandingPage() {
             >
               <span aria-hidden="true" className="block">
                 {fullTitle.slice(0, Math.min(typedCharacters, titleFirstLine.length))}
-                {typedCharacters < fullTitle.length && typedCharacters <= titleFirstLine.length && (
+                {typedCharacters <= titleFirstLine.length && (
                   <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-amber-100 motion-reduce:animate-none" />
                 )}
               </span>
               <span aria-hidden="true" className="mt-2 block font-serif italic text-amber-100">
                 {typedCharacters > titleFirstLine.length &&
                   titleLastLine.slice(0, typedCharacters - titleFirstLine.length - 1)}
-                {typedCharacters < fullTitle.length && typedCharacters > titleFirstLine.length && (
+                {typedCharacters > titleFirstLine.length && (
                   <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-amber-100 motion-reduce:animate-none" />
                 )}
               </span>

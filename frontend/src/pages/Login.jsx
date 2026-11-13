@@ -113,6 +113,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [visualIndex, setVisualIndex] = useState(0);
+  const [previousVisualIndex, setPreviousVisualIndex] = useState(null);
   const [typedTagline, setTypedTagline] = useState('');
 
   useEffect(() => {
@@ -121,11 +122,26 @@ export default function Login() {
       return undefined;
     }
 
-    let position = 0;
+    let direction = 1;
+    let pauseTicks = 0;
     const timer = window.setInterval(() => {
-      position += 1;
-      setTypedTagline(LOGIN_TAGLINE.slice(0, position));
-      if (position >= LOGIN_TAGLINE.length) window.clearInterval(timer);
+      setTypedTagline((tagline) => {
+        if (pauseTicks > 0) {
+          pauseTicks -= 1;
+          return tagline;
+        }
+        if (tagline.length >= LOGIN_TAGLINE.length) {
+          direction = -1;
+          pauseTicks = 12;
+          return tagline;
+        }
+        if (tagline.length <= 0) {
+          direction = 1;
+          pauseTicks = 4;
+          return tagline;
+        }
+        return LOGIN_TAGLINE.slice(0, tagline.length + direction);
+      });
     }, 55);
     return () => window.clearInterval(timer);
   }, []);
@@ -134,12 +150,18 @@ export default function Login() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return undefined;
     }
-    const timer = window.setInterval(
-      () => setVisualIndex((index) => (index + 1) % LOCAL_WELCOME_SLIDES.length),
-      6500
-    );
-    return () => window.clearInterval(timer);
-  }, []);
+    const timer = window.setTimeout(() => {
+      setPreviousVisualIndex(visualIndex);
+      setVisualIndex((visualIndex + 1) % LOCAL_WELCOME_SLIDES.length);
+    }, 6500);
+    return () => window.clearTimeout(timer);
+  }, [visualIndex]);
+
+  useEffect(() => {
+    if (previousVisualIndex === null) return undefined;
+    const timer = window.setTimeout(() => setPreviousVisualIndex(null), 700);
+    return () => window.clearTimeout(timer);
+  }, [previousVisualIndex]);
 
   useEffect(() => {
     if (user?.role) navigate(getRoleHomePath(user.role), { replace: true });
@@ -301,11 +323,19 @@ export default function Login() {
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-3 sm:p-6">
       <section className="grid w-full max-w-6xl overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-900/10 md:min-h-[680px] md:grid-cols-2">
         <aside className="relative isolate flex min-h-[360px] flex-col justify-between overflow-hidden bg-slate-950 p-6 text-white sm:min-h-[440px] sm:p-10 md:min-h-full md:p-12">
+          {previousVisualIndex !== null && (
+            <img
+              src={LOCAL_WELCOME_SLIDES[previousVisualIndex].src}
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 -z-20 h-full w-full object-cover"
+            />
+          )}
           <img
             key={LOCAL_WELCOME_SLIDES[visualIndex].id}
             src={LOCAL_WELCOME_SLIDES[visualIndex].src}
             alt=""
-            className="absolute inset-0 -z-20 h-full w-full animate-[welcome-slide-in_700ms_ease-out_both] object-cover"
+            className="absolute inset-0 -z-20 h-full w-full animate-[welcome-slide-in_700ms_ease-in-out_both] object-cover"
           />
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-slate-950/45 via-slate-950/30 to-slate-950/90" />
           <Link
