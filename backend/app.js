@@ -29,7 +29,10 @@ app.use((error, req, res, next) => {
     console.error(error);
   }
   return res.status(status).json({
-    message: status >= 500 ? 'An unexpected server error occurred.' : error.message,
+    message:
+      error.expose === true || status < 500
+        ? error.message
+        : 'An unexpected server error occurred.',
   });
 });
 

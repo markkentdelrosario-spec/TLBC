@@ -7,7 +7,7 @@ const { verifyFirebaseIdToken, authenticate } = require('../middleware/authMiddl
 const Beneficiary = require('../models/Beneficiary');
 const User = require('../models/User');
 const {
-  createResendClient,
+  createBrevoClient,
   sendRegistrationOtp,
 } = require('../services/email');
 
@@ -22,7 +22,7 @@ function normalizeGmail(value) {
 }
 
 function getRegistrationEmailError() {
-  return 'Email registration is not configured. Set RESEND_API_KEY.';
+  return 'Email registration is not configured. Set BREVO_API_KEY.';
 }
 
 async function registerManualAccount(req, res, next) {
@@ -45,8 +45,8 @@ async function registerManualAccount(req, res, next) {
     return res.status(400).json({ message: 'Password must be between 8 and 128 characters.' });
   }
 
-  const resend = createResendClient();
-  if (!resend) return res.status(503).json({ message: getRegistrationEmailError() });
+  const brevo = createBrevoClient();
+  if (!brevo) return res.status(503).json({ message: getRegistrationEmailError() });
 
   let pendingUser;
   try {
@@ -76,7 +76,7 @@ async function registerManualAccount(req, res, next) {
     });
 
     try {
-      await sendRegistrationOtp(resend, email, displayName, otp);
+      await sendRegistrationOtp(brevo, email, displayName, otp);
     } catch (error) {
       await User.deleteOne({ _id: pendingUser._id });
       return next(error);
@@ -201,8 +201,8 @@ router.post('/resend-otp', async (req, res, next) => {
     return res.status(400).json({ message: 'Use a valid Gmail address ending in @gmail.com.' });
   }
 
-  const resend = createResendClient();
-  if (!resend) return res.status(503).json({ message: getRegistrationEmailError() });
+  const brevo = createBrevoClient();
+  if (!brevo) return res.status(503).json({ message: getRegistrationEmailError() });
 
   try {
     const pendingUser = await User.findOne({ email, isVerified: false })
@@ -222,7 +222,7 @@ router.post('/resend-otp', async (req, res, next) => {
     }
 
     const otp = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-    await sendRegistrationOtp(resend, email, pendingUser.displayName, otp);
+    await sendRegistrationOtp(brevo, email, pendingUser.displayName, otp);
     pendingUser.otp = await bcrypt.hash(otp, OTP_HASH_ROUNDS);
     pendingUser.otpExpires = new Date(Date.now() + OTP_TTL_MS);
     pendingUser.otpAttempts = 0;
