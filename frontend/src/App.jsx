@@ -3,6 +3,7 @@ import AdminUserManagementDashboard from './components/admin/AdminUserManagement
 import BeneficiaryDashboard from './components/beneficiary/BeneficiaryDashboard';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import LifeCoachQrScanner from './components/lifecoach/LifeCoachQrScanner';
+import KspCustomEvents from './components/lifecoach/KspCustomEvents';
 import PastorDashboard from './components/pastor/PastorDashboard';
 import FullLeaderboardsPage from './components/attendance/FullLeaderboardsPage';
 import { AuthProvider, getRoleHomePath, useAuth } from './context/AuthContext';
@@ -40,6 +41,19 @@ export default function App() {
                   <DashboardWithToken>
                     {(getIdToken) => (
                       <LifeCoachQrScanner
+                        getIdToken={getIdToken}
+                        apiBaseUrl={apiBaseUrl}
+                      />
+                    )}
+                  </DashboardWithToken>
+                }
+              />
+              <Route
+                path="/scanner/custom-events"
+                element={
+                  <DashboardWithToken>
+                    {(getIdToken) => (
+                      <KspCustomEvents
                         getIdToken={getIdToken}
                         apiBaseUrl={apiBaseUrl}
                       />

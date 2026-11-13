@@ -41,10 +41,11 @@ then set `BREVO_API_KEY` in `backend/.env` for local development and in the
 Render API service's Environment settings for deployment. Do not commit the
 key. Registration verification emails use the sender
 `The Life Builder Church <thelifebuilderchurch@gmail.com>`. Verify that sender
-in Brevo before sending; Brevo rejects unverified senders. The API checks that
-the key is configured at startup and returns a delivery error if Brevo rejects
-the email. Enable the Email/Password sign-in provider in Firebase Authentication
-so members can sign in with the password they set during registration.
+in Brevo before sending; Brevo rejects unverified senders. Email requests use a
+30-second timeout without SDK retries to avoid long waits and duplicate sends.
+The API reports a delivery error if Brevo rejects or cannot complete the email.
+Enable the Email/Password sign-in provider in Firebase Authentication so
+members can sign in with the password they set during registration.
 
 Password reset emails currently use Firebase Authentication's
 `sendPasswordResetEmail`, and notifications are delivered in-app and by push;
@@ -79,6 +80,13 @@ Codes expire after 10 minutes, can be resent after a 60-second cooldown, and are
 invalidated after five incorrect attempts. The API endpoints are
 `POST /api/auth/register`, `POST /api/auth/verify-otp`, and
 `POST /api/auth/resend-otp`.
+
+KSP Leaders can create custom events at `POST /api/custom-events` with category
+`KSP Gathering`, `Seminars`, or `Other` (the last requires `customName`). Select
+an event and scan member QR IDs at `POST /api/custom-events/:eventId/scans`.
+Custom event scans are written to the dedicated MongoDB collection
+`custom_event_attendance_scans`, separately from Sunday attendance, with one
+scan per member per event.
 
 ## Local admin testing
 

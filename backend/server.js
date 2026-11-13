@@ -10,6 +10,7 @@ if (fs.existsSync(envPath)) {
 const mongoose = require('mongoose');
 const app = require('./app');
 const AttendanceLog = require('./models/AttendanceLog');
+const CustomEventAttendanceScan = require('./models/CustomEventAttendanceScan');
 const User = require('./models/User');
 const { validateBrevoConfig } = require('./services/email');
 const { initializeRealtime } = require('./realtime/realtime');
@@ -82,6 +83,10 @@ async function startServer() {
       partialFilterExpression: { user: { $type: 'objectId' } },
       name: 'user_attendance_date_unique',
     }
+  );
+  await CustomEventAttendanceScan.collection.createIndex(
+    { event: 1, user: 1 },
+    { unique: true, name: 'custom_event_user_scan_unique' }
   );
   const userCollectionExists = await mongoose.connection.db
     .listCollections({ name: User.collection.name }, { nameOnly: true })

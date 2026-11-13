@@ -11,7 +11,13 @@ function getBrevoConfig(env = process.env) {
 
 function createBrevoClient(env = process.env) {
   const { apiKey } = getBrevoConfig(env);
-  return apiKey ? new BrevoClient({ apiKey }) : null;
+  return apiKey
+    ? new BrevoClient({
+      apiKey,
+      timeoutInSeconds: 30,
+      maxRetries: 0,
+    })
+    : null;
 }
 
 function validateBrevoConfig(env = process.env) {
@@ -59,6 +65,9 @@ async function sendRegistrationOtp(brevo, email, displayName, otp) {
         email: 'thelifebuilderchurch@gmail.com',
       },
       to: [{ email }],
+    }, {
+      timeoutInSeconds: 30,
+      maxRetries: 0,
     });
   } catch (error) {
     throw createEmailDeliveryError(error);

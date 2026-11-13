@@ -54,6 +54,21 @@ test('registration email uses Brevo and escapes the display name', async () => {
   assert.match(sentEmail.textContent, /012345/);
 });
 
+test('registration email request avoids long retries and has a bounded timeout', async () => {
+  let requestOptions;
+  const brevo = {
+    transactionalEmails: {
+      async sendTransacEmail(_email, options) {
+        requestOptions = options;
+      },
+    },
+  };
+
+  await sendRegistrationOtp(brevo, 'member@gmail.com', 'Member', '012345');
+
+  assert.deepEqual(requestOptions, { timeoutInSeconds: 30, maxRetries: 0 });
+});
+
 test('registration email reports a Brevo API rejection', async () => {
   const brevo = {
     transactionalEmails: {

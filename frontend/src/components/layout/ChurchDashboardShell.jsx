@@ -22,6 +22,7 @@ import ThemeToggle from '../shared/ThemeToggle';
 import ImageUpload from '../shared/ImageUpload';
 import ConfirmationModal from '../shared/ConfirmationModal';
 import AttendanceMonitoringPanel from '../attendance/AttendanceMonitoringPanel';
+import OfferOnlineModal from '../shared/OfferOnlineModal';
 
 const BIBLE_TRANSLATIONS = [
   ['web', 'World English Bible (WEB)'],
@@ -262,6 +263,7 @@ export default function ChurchDashboardShell({
   const welcomeSlides = LOCAL_WELCOME_SLIDES;
   const [welcomeIndex, setWelcomeIndex] = useState(0);
   const [qrOpen, setQrOpen] = useState(false);
+  const [offerOnlineOpen, setOfferOnlineOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileDraft, setProfileDraft] = useState({
     displayName: user?.name || '',
@@ -1438,6 +1440,13 @@ export default function ChurchDashboardShell({
                   >
                     <span aria-hidden="true">▦</span> QR ID
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => { setSettingsOpen(false); setOfferOnlineOpen(true); }}
+                    className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium text-slate-700 transition hover:bg-violet-50 hover:text-violet-800"
+                  >
+                    <span aria-hidden="true">♡</span> Offer Online
+                  </button>
                   <ThemeToggle />
                   <div className="my-1 border-t border-slate-100" />
                   <button
@@ -2083,6 +2092,7 @@ export default function ChurchDashboardShell({
         </section>
 
         <MemberQRCode user={user} open={qrOpen} onClose={() => setQrOpen(false)} showTrigger={false} />
+        <OfferOnlineModal open={offerOnlineOpen} onClose={() => setOfferOnlineOpen(false)} />
         <ConfirmationModal
           open={Boolean(confirmation)}
           title={confirmation?.title || ''}

@@ -227,12 +227,20 @@ export default function LifeCoachQrScanner({
           </p>
           <div className="mt-2 flex items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Record attendance</h1>
-            <Link
-              to="/profile"
-              className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              Back to dashboard
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to="/scanner/custom-events"
+                className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-emerald-200 px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+              >
+                Custom events
+              </Link>
+              <Link
+                to="/profile"
+                className="inline-flex min-h-10 shrink-0 items-center rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Back to dashboard
+              </Link>
+            </div>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             Scan a member’s QR ID card to record attendance for this Sunday, or find a member manually.

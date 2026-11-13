@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import SereneBackdrop from '../components/layout/SereneBackdrop';
+import OfferOnlineModal from '../components/shared/OfferOnlineModal';
 import { getRoleHomePath, useAuth } from '../context/AuthContext';
 
 const navigationItems = [
@@ -19,6 +20,7 @@ const contentClass = 'mx-auto w-full max-w-6xl';
 export default function LandingPage() {
   const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [offerOnlineOpen, setOfferOnlineOpen] = useState(false);
 
   function closeMobileMenu() {
     setMobileMenuOpen(false);
@@ -51,6 +53,13 @@ export default function LandingPage() {
                 {item.label}
               </a>
             ))}
+            <button
+              type="button"
+              onClick={() => setOfferOnlineOpen(true)}
+              className="rounded-full px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-amber-200"
+            >
+              Offer Online
+            </button>
           </nav>
 
           <button
@@ -87,6 +96,16 @@ export default function LandingPage() {
                   {item.label}
                 </a>
               ))}
+              <button
+                type="button"
+                onClick={() => {
+                  closeMobileMenu();
+                  setOfferOnlineOpen(true);
+                }}
+                className="flex min-h-11 items-center rounded-lg px-3 text-left text-sm font-semibold text-amber-100 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              >
+                Offer Online
+              </button>
             </div>
           </nav>
         )}
@@ -291,12 +310,39 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <section id="offer-online" className={`${sectionClass} border-t border-white/10 bg-slate-950/45`}>
+        <div className={`${contentClass} grid items-center gap-8 md:grid-cols-[minmax(0,1fr)_minmax(16rem,.7fr)]`}>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200">Offer Online</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Give with a quick scan</h2>
+            <p className="mt-4 max-w-xl text-base leading-7 text-slate-100/75">
+              Use the giving QR code to make your offering online.
+            </p>
+            <button
+              type="button"
+              onClick={() => setOfferOnlineOpen(true)}
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-full bg-amber-200 px-6 py-3 text-sm font-bold text-emerald-950 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-white"
+            >
+              View giving QR code
+            </button>
+          </div>
+          <div className="mx-auto w-full max-w-sm rounded-3xl border border-white/20 bg-white p-4 shadow-xl">
+            <img
+              src="/images/QR/QR1.jpg"
+              alt="Offer Online giving QR code"
+              className="aspect-square w-full rounded-2xl object-contain"
+            />
+          </div>
+        </div>
+      </section>
+
       <footer className="border-t border-white/15 px-4 py-7 text-center text-xs tracking-wide text-emerald-50/70 sm:px-8 sm:text-sm">
         <p>THE LIFE BUILDER CHURCH <span className="mx-2">·</span> Faith, fellowship, and service</p>
         <a href="#home" className="mt-3 inline-block min-h-10 py-3 font-semibold text-emerald-100 hover:text-white focus:outline-none focus:ring-2 focus:ring-amber-200">
           Back to top ↑
         </a>
       </footer>
+      <OfferOnlineModal open={offerOnlineOpen} onClose={() => setOfferOnlineOpen(false)} />
     </main>
   );
 }
