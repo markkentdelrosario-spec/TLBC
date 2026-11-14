@@ -183,6 +183,30 @@
     color: #064e3b !important;
   }
 
+  html.dark .public-site-page [class~="text-yellow-700"] {
+    color: #a16207 !important;
+  }
+
+  html.dark .public-site-page [class~="text-orange-700"] {
+    color: #c2410c !important;
+  }
+
+  html.dark .public-site-page [class~="text-sky-700"] {
+    color: #0369a1 !important;
+  }
+
+  html.dark .public-site-page [class~="text-violet-700"] {
+    color: #6d28d9 !important;
+  }
+
+  html.dark .public-site-page [class~="text-pink-700"] {
+    color: #be185d !important;
+  }
+
+  html.dark .public-site-page [class~="text-teal-700"] {
+    color: #0f766e !important;
+  }
+
   html.dark .digital-id-card {
     background-color: #ffffff !important;
     border-color: #cbd5e1 !important;

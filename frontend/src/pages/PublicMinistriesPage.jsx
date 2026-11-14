@@ -4,17 +4,66 @@ import PublicSiteNav from '../components/layout/PublicSiteNav';
 import { apiBaseUrl } from '../config/api';
 
 const ministryStyles = [
-  { icon: '♫', accent: 'from-amber-300 to-orange-400', label: 'Worship' },
-  { icon: '▣', accent: 'from-cyan-300 to-blue-500', label: 'Media' },
-  { icon: '◖', accent: 'from-violet-300 to-indigo-500', label: 'Audio' },
-  { icon: '✦', accent: 'from-rose-300 to-pink-500', label: 'Youth' },
-  { icon: '⌂', accent: 'from-emerald-300 to-teal-500', label: 'Community' },
+  { slug: 'worship-ministry', icon: '♫', accent: 'from-amber-300 to-orange-400', label: 'Worship', textColor: 'text-orange-700' },
+  { slug: 'media-team-ministry', icon: '▣', accent: 'from-cyan-300 to-blue-500', label: 'Media', textColor: 'text-sky-700' },
+  { slug: 'audio-team-ministry', icon: '◖', accent: 'from-violet-300 to-indigo-500', label: 'Audio', textColor: 'text-violet-700' },
+  { slug: 'youth-ministry', icon: '✦', accent: 'from-rose-300 to-pink-500', label: 'Youth', textColor: 'text-pink-700' },
+  { slug: 'small-groups', icon: '⌂', accent: 'from-emerald-300 to-teal-500', label: 'Community', textColor: 'text-teal-700' },
 ];
+
+const headingText = 'Grow together, serve together';
+const TYPEWRITER_INTERVAL_MS = 85;
+const TYPEWRITER_PAUSE_MS = 2200;
+const TYPEWRITER_DELETE_INTERVAL_MS = 45;
 
 export default function PublicMinistriesPage() {
   const [ministries, setMinistries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [headingAnimation, setHeadingAnimation] = useState({
+    characters: 0,
+    phase: 'typing',
+  });
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (
+        headingAnimation.phase !== 'complete' ||
+        headingAnimation.characters !== headingText.length
+      ) {
+        setHeadingAnimation({ characters: headingText.length, phase: 'complete' });
+      }
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setHeadingAnimation((animation) => {
+        if (animation.phase === 'pause') {
+          return { ...animation, phase: 'deleting' };
+        }
+
+        if (animation.phase === 'typing') {
+          const characters = animation.characters + 1;
+          return {
+            characters,
+            phase: characters === headingText.length ? 'pause' : 'typing',
+          };
+        }
+
+        const characters = animation.characters - 1;
+        return {
+          characters,
+          phase: characters === 0 ? 'typing' : 'deleting',
+        };
+      });
+    }, headingAnimation.phase === 'pause'
+      ? TYPEWRITER_PAUSE_MS
+      : headingAnimation.phase === 'deleting'
+        ? TYPEWRITER_DELETE_INTERVAL_MS
+        : TYPEWRITER_INTERVAL_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [headingAnimation]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -66,7 +115,17 @@ export default function PublicMinistriesPage() {
             <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">Our ministries</p>
-                <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Grow together, serve together</h2>
+                <h2
+                  aria-label={headingText}
+                  className="mt-2 min-h-[1.25em] text-3xl font-bold tracking-tight text-yellow-700 sm:text-4xl"
+                >
+                  <span aria-hidden="true">
+                    {headingText.slice(0, headingAnimation.characters)}
+                    {headingAnimation.phase !== 'complete' && (
+                      <span className="ml-1 inline-block h-[0.85em] w-0.5 translate-y-1 animate-pulse bg-yellow-700 motion-reduce:animate-none" />
+                    )}
+                  </span>
+                </h2>
               </div>
               <p className="max-w-lg text-sm leading-6 text-slate-700">
                 Whether you’re exploring church for the first time or ready to get involved, we’d love to help you find a next step.
@@ -74,7 +133,8 @@ export default function PublicMinistriesPage() {
             </div>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {ministries.map((ministry, index) => {
-                const style = ministryStyles[index % ministryStyles.length];
+                const style = ministryStyles.find((item) => item.slug === ministry.slug)
+                  || ministryStyles[index % ministryStyles.length];
                 return (
                   <Link
                     key={ministry.slug}
@@ -88,7 +148,7 @@ export default function PublicMinistriesPage() {
                         <span aria-hidden="true">{style.icon}</span>
                       </div>
                       <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-800">{style.label}</p>
-                      <h3 className="mt-1 text-xl font-bold tracking-tight">{ministry.name}</h3>
+                      <h3 className={`mt-1 text-xl font-bold tracking-tight ${style.textColor}`}>{ministry.name}</h3>
                       <p className="mt-3 min-h-12 whitespace-pre-line text-sm leading-6 text-slate-700">
                         {ministry.description || 'More information is coming soon. Contact the church to learn how to get involved.'}
                       </p>
