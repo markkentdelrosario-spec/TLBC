@@ -130,7 +130,8 @@ The API sends one in-app reminder to each active, verified account at 9:00 AM
 on the local calendar day before a published event. Push delivery is attempted
 only for devices with a registered opt-in token. The reminder scheduler runs
 in the API process and records per-user deduplication keys so restarts do not
-create duplicate reminders.
+create duplicate reminders. The recurring Sunday Worship Celebration at 8:30
+AM is also shown in the public calendar and receives the same reminder.
 
 The built-in Bible reader offers the public translations provided by
 bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). NKJV, NLT, and NIV

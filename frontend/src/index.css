@@ -130,6 +130,59 @@
     color: #cbd5e1 !important;
   }
 
+  html.dark .public-site-page [class~="bg-white"] {
+    background-color: #ffffff !important;
+  }
+
+  html.dark .public-site-page [class~="bg-slate-50"] {
+    background-color: #f8fafc !important;
+  }
+
+  html.dark .public-site-page [class~="bg-emerald-50"] {
+    background-color: #ecfdf5 !important;
+  }
+
+  html.dark .public-site-page [class~="bg-amber-50"] {
+    background-color: #fffbeb !important;
+  }
+
+  html.dark .public-site-page [class~="bg-rose-50"] {
+    background-color: #fff1f2 !important;
+  }
+
+  html.dark .public-site-page [class~="text-slate-900"] {
+    color: #0f172a !important;
+  }
+
+  html.dark .public-site-page [class~="text-slate-800"] {
+    color: #1e293b !important;
+  }
+
+  html.dark .public-site-page [class~="text-slate-700"] {
+    color: #334155 !important;
+  }
+
+  html.dark .public-site-page [class~="text-slate-600"] {
+    color: #475569 !important;
+  }
+
+  html.dark .public-site-page [class~="text-slate-500"],
+  html.dark .public-site-page [class~="text-slate-400"] {
+    color: #64748b !important;
+  }
+
+  html.dark .public-site-page [class~="text-emerald-700"] {
+    color: #047857 !important;
+  }
+
+  html.dark .public-site-page [class~="text-emerald-800"] {
+    color: #065f46 !important;
+  }
+
+  html.dark .public-site-page [class~="text-emerald-900"] {
+    color: #064e3b !important;
+  }
+
   html.dark .digital-id-card {
     background-color: #ffffff !important;
     border-color: #cbd5e1 !important;

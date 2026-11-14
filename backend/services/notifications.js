@@ -148,7 +148,9 @@ async function notifyUpcomingEvent(event) {
     day: 'numeric',
   }).format(new Date(Date.UTC(eventYear, eventMonth - 1, eventDay, 12)));
   const timeLabel = event.startTime ? ` at ${event.startTime}` : '';
-  const dedupeKey = `event-reminder:${event._id}:${eventDateKey}:${event.startTime || ''}`;
+  const eventKey = event._id || event.reminderKey;
+  if (!eventKey) throw new Error('An event ID or reminder key is required.');
+  const dedupeKey = `event-reminder:${eventKey}:${eventDateKey}:${event.startTime || ''}`;
   const createdAt = new Date();
   const writes = recipients.map((user) => ({
     updateOne: {
@@ -161,7 +163,7 @@ async function notifyUpcomingEvent(event) {
           scope: 'event',
           title: `Tomorrow: ${event.title}`.slice(0, 160),
           message: `${dateLabel}${timeLabel}${event.location ? ` · ${event.location}` : ''}`.slice(0, 300),
-          entityId: event._id,
+          entityId: event._id || null,
           dedupeKey: `${dedupeKey}:${user._id}`,
           createdAt,
         },

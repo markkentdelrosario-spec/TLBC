@@ -49,6 +49,25 @@ function getMonthCells(year, month) {
   });
 }
 
+function getSundaysInMonth(year, month) {
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return Array.from({ length: daysInMonth }, (_, index) => index + 1)
+    .filter((day) => new Date(Date.UTC(year, month, day)).getUTCDay() === 0)
+    .map((day) => getDateKey(year, month, day));
+}
+
+function createWorshipEvent(dateKey) {
+  return {
+    _id: `worship-${dateKey}`,
+    eventDate: dateKey,
+    title: 'Worship Celebration',
+    category: 'Worship',
+    startTime: '08:30',
+    displayTime: '8:30 AM Onwards',
+    description: '',
+  };
+}
+
 function EventCard({ event, featured = false }) {
   const eventDate = String(event.eventDate).slice(0, 10);
   return (
@@ -82,9 +101,9 @@ function EventCard({ event, featured = false }) {
         }`}>
           <span className="inline-flex items-center gap-2">
             <span aria-hidden="true">◷</span>
-            {event.startTime
+            {event.displayTime || (event.startTime
               ? `${formatTime(event.startTime)}${event.endTime ? ` – ${formatTime(event.endTime)}` : ''}`
-              : 'Time to be announced'}
+              : 'Time to be announced')}
           </span>
           {event.location && (
             <span className="inline-flex items-center gap-2">
@@ -135,13 +154,34 @@ export default function PublicEventsPage() {
   }, []);
 
   const eventsByDate = useMemo(() => {
+    const [currentYear, currentMonth] = todayKey.split('-').map(Number);
+    const worshipDates = new Set(
+      getSundaysInMonth(month.year, month.month)
+    );
+    for (let monthOffset = 0; monthOffset < 12; monthOffset += 1) {
+      const monthDate = new Date(Date.UTC(currentYear, currentMonth - 1 + monthOffset, 1));
+      getSundaysInMonth(monthDate.getUTCFullYear(), monthDate.getUTCMonth())
+        .filter((dateKey) => dateKey >= todayKey)
+        .forEach((dateKey) => worshipDates.add(dateKey));
+    }
+    const calendarEvents = [
+      ...events,
+      ...Array.from(worshipDates, createWorshipEvent),
+    ].sort((first, second) =>
+      String(first.eventDate).localeCompare(String(second.eventDate)) ||
+      String(first.startTime || '').localeCompare(String(second.startTime || ''))
+    );
     const grouped = new Map();
-    for (const event of events) {
+    for (const event of calendarEvents) {
       const dateKey = String(event.eventDate).slice(0, 10);
       grouped.set(dateKey, [...(grouped.get(dateKey) || []), event]);
     }
     return grouped;
-  }, [events]);
+  }, [events, month.month, month.year, todayKey]);
+  const calendarEvents = useMemo(
+    () => Array.from(eventsByDate.values()).flat(),
+    [eventsByDate]
+  );
   useEffect(() => {
     const eventId = new URLSearchParams(location.search).get('eventId');
     const event = events.find((item) => String(item._id) === eventId);
@@ -152,7 +192,10 @@ export default function PublicEventsPage() {
     setMonth({ year, month: monthNumber - 1 });
   }, [events, location.search]);
   const selectedEvents = eventsByDate.get(selectedDate) || [];
-  const nextEvent = events.find((event) => String(event.eventDate).slice(0, 10) >= todayKey);
+  const upcomingEvents = calendarEvents.filter(
+    (event) => String(event.eventDate).slice(0, 10) >= todayKey
+  );
+  const nextEvent = upcomingEvents[0];
   const monthCells = getMonthCells(month.year, month.month);
 
   function moveMonth(direction) {
@@ -162,7 +205,7 @@ export default function PublicEventsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f3f7f5] text-slate-900">
+    <main className="public-site-page min-h-screen bg-[#f3f7f5] text-slate-900">
       <PublicSiteNav />
       <section className="relative isolate overflow-hidden bg-slate-950 px-4 py-14 text-white sm:px-8 sm:py-20">
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_right,rgba(16,185,129,.28),transparent_52%),radial-gradient(ellipse_at_bottom_left,rgba(251,191,36,.13),transparent_45%)]" />
@@ -292,9 +335,9 @@ export default function PublicEventsPage() {
           <p role="status" className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading the upcoming schedule…</p>
         ) : error ? (
           <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">{error}</p>
-        ) : events.length ? (
+        ) : upcomingEvents.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {events.map((event) => <EventCard key={event._id} event={event} />)}
+            {upcomingEvents.map((event) => <EventCard key={event._id} event={event} />)}
           </div>
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-sm">

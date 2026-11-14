@@ -11,6 +11,8 @@ church ministries page at `/ministries`. Administrators manage public events
 and edit ministry descriptions from the Admin dashboard. Active registered
 users receive an in-app event reminder at 9:00 AM (church timezone) on the day
 before a published event; opted-in devices also receive a push notification.
+The calendar also lists the recurring Sunday Worship Celebration at 8:30 AM
+onwards.
 
 ## Deploying to Render
 

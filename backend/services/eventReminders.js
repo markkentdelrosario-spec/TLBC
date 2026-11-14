@@ -17,6 +17,12 @@ function getEventsDueForReminder(now = new Date()) {
   return eventDate;
 }
 
+function isChurchSundayDate(date) {
+  const dateAtChurchNoon = new Date(date);
+  dateAtChurchNoon.setUTCHours(12, 0, 0, 0);
+  return getChurchAttendanceClock(dateAtChurchNoon).weekday === 'Sun';
+}
+
 async function sendUpcomingEventReminders(now = new Date()) {
   const eventDate = getEventsDueForReminder(now);
   if (!eventDate) return 0;
@@ -70,7 +76,21 @@ async function sendUpcomingEventReminders(now = new Date()) {
       throw error;
     }
   }
+  if (isChurchSundayDate(eventDate)) {
+    await notifyUpcomingEvent({
+      reminderKey: `worship-celebration:${eventDate.toISOString().slice(0, 10)}`,
+      title: 'Worship Celebration',
+      eventDate,
+      startTime: '08:30',
+      location: '',
+    });
+    sentCount += 1;
+  }
   return sentCount;
 }
 
-module.exports = { getEventsDueForReminder, sendUpcomingEventReminders };
+module.exports = {
+  getEventsDueForReminder,
+  isChurchSundayDate,
+  sendUpcomingEventReminders,
+};

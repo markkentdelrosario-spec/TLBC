@@ -41,7 +41,7 @@ export default function PublicMinistriesPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#f4f7f5] text-slate-900">
+    <main className="public-site-page min-h-screen bg-[#f4f7f5] text-slate-900">
       <PublicSiteNav />
       <section className="relative isolate overflow-hidden bg-slate-950 px-4 py-16 text-white sm:px-8 sm:py-24">
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top_left,rgba(16,185,129,.3),transparent_50%),radial-gradient(ellipse_at_bottom_right,rgba(251,191,36,.13),transparent_42%)]" />
@@ -76,23 +76,27 @@ export default function PublicMinistriesPage() {
               {ministries.map((ministry, index) => {
                 const style = ministryStyles[index % ministryStyles.length];
                 return (
-                  <article key={ministry.slug} className="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-7">
-                    <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} />
-                    <div className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${style.accent} text-2xl font-bold text-white shadow-lg`}>
-                      <span aria-hidden="true">{style.icon}</span>
-                    </div>
-                    <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">{style.label}</p>
-                    <h3 className="mt-1 text-xl font-bold tracking-tight">{ministry.name}</h3>
-                    <p className="mt-3 min-h-12 whitespace-pre-line text-sm leading-6 text-slate-600">
-                      {ministry.description || 'More information is coming soon. Contact the church to learn how to get involved.'}
-                    </p>
-                    <Link
-                      to="/#connect-with-us"
-                      className="mt-5 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-emerald-800 underline decoration-emerald-300 underline-offset-4 transition group-hover:text-emerald-950 focus:outline-none focus:ring-2 focus:ring-emerald-600"
-                    >
-                      Ask us about this ministry <span aria-hidden="true">→</span>
-                    </Link>
-                  </article>
+                  <Link
+                    key={ministry.slug}
+                    to="/login"
+                    aria-label={`Sign in to learn more about ${ministry.name}`}
+                    className="block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:ring-offset-4"
+                  >
+                    <article className="group relative h-full overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-7">
+                      <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${style.accent}`} />
+                      <div className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${style.accent} text-2xl font-bold text-white shadow-lg`}>
+                        <span aria-hidden="true">{style.icon}</span>
+                      </div>
+                      <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">{style.label}</p>
+                      <h3 className="mt-1 text-xl font-bold tracking-tight">{ministry.name}</h3>
+                      <p className="mt-3 min-h-12 whitespace-pre-line text-sm leading-6 text-slate-600">
+                        {ministry.description || 'More information is coming soon. Contact the church to learn how to get involved.'}
+                      </p>
+                      <span className="mt-5 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-emerald-800 underline decoration-emerald-300 underline-offset-4 transition group-hover:text-emerald-950">
+                        Sign in to learn more <span aria-hidden="true">→</span>
+                      </span>
+                    </article>
+                  </Link>
                 );
               })}
             </div>

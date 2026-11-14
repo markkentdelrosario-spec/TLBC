@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 
 process.env.CHURCH_TIME_ZONE = 'Asia/Manila';
 
-const { getEventsDueForReminder } = require('../services/eventReminders');
+const {
+  getEventsDueForReminder,
+  isChurchSundayDate,
+} = require('../services/eventReminders');
 
 test('event reminders wait until 9 AM in the church timezone', () => {
   assert.equal(
@@ -21,4 +24,9 @@ test('event reminder date advances by the church calendar day across midnight', 
     getEventsDueForReminder(new Date('2026-11-08T01:00:00.000Z')).toISOString(),
     '2026-11-09T00:00:00.000Z'
   );
+});
+
+test('weekly worship reminder uses the church-local Sunday date', () => {
+  assert.equal(isChurchSundayDate(new Date('2026-11-15T00:00:00.000Z')), true);
+  assert.equal(isChurchSundayDate(new Date('2026-11-16T00:00:00.000Z')), false);
 });
