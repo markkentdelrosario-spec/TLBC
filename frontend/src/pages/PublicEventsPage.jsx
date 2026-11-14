@@ -84,20 +84,20 @@ function EventCard({ event, featured = false }) {
           }`}>
             {event.category}
           </span>
-          <span className={`text-right text-xs font-semibold ${featured ? 'text-emerald-100' : 'text-slate-500'}`}>
+          <span className={`text-right text-xs font-semibold ${featured ? 'text-emerald-100' : 'text-slate-700'}`}>
             {formatDate(eventDate, { month: 'short', day: 'numeric' })}
           </span>
         </div>
         <h3 className="mt-4 text-xl font-bold tracking-tight sm:text-2xl">{event.title}</h3>
         {event.description && (
           <p className={`mt-3 whitespace-pre-line text-sm leading-6 ${
-            featured ? 'text-emerald-50/80' : 'text-slate-600'
+            featured ? 'text-emerald-50/80' : 'text-slate-700'
           }`}>
             {event.description}
           </p>
         )}
         <div className={`mt-5 flex flex-wrap gap-x-5 gap-y-2 border-t pt-4 text-sm ${
-          featured ? 'border-white/15 text-emerald-50/90' : 'border-slate-100 text-slate-600'
+          featured ? 'border-white/15 text-emerald-50/90' : 'border-slate-100 text-slate-700'
         }`}>
           <span className="inline-flex items-center gap-2">
             <span aria-hidden="true">◷</span>
@@ -243,7 +243,7 @@ export default function PublicEventsPage() {
             </div>
           </div>
           <div className="p-3 sm:p-6">
-            <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400 sm:text-xs">
+            <div className="grid grid-cols-7 border-b border-slate-100 pb-2 text-center text-[10px] font-bold uppercase tracking-wide text-slate-600 sm:text-xs">
               {WEEKDAYS.map((day) => <span key={day} className="py-2">{day}</span>)}
             </div>
             <div className="grid grid-cols-7 gap-1 pt-2 sm:gap-2">
@@ -278,7 +278,7 @@ export default function PublicEventsPage() {
                 );
               })}
             </div>
-            <p className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+            <p className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-700">
               <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" />
               A marked date has an upcoming event
             </p>
@@ -306,13 +306,13 @@ export default function PublicEventsPage() {
             </div>
             <div className="mt-4 space-y-3">
               {loading ? (
-                <p role="status" className="py-5 text-sm text-slate-500">Loading events…</p>
+                <p role="status" className="py-5 text-sm text-slate-700">Loading events…</p>
               ) : error ? (
                 <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>
               ) : selectedEvents.length ? (
                 selectedEvents.map((event) => <EventCard key={event._id} event={event} />)
               ) : (
-                <p className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                <p className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
                   No event is scheduled for this date. Choose a marked day to explore what’s coming up.
                 </p>
               )}
@@ -321,33 +321,7 @@ export default function PublicEventsPage() {
         </aside>
       </div>
 
-      <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-8 sm:pb-16">
-        <div className="mb-6 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">Save the date</p>
-            <h2 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">Upcoming schedule</h2>
-          </div>
-          <p className="max-w-xl text-sm leading-6 text-slate-600">
-            Browse the upcoming gatherings and select any marked date above for its details.
-          </p>
-        </div>
-        {loading ? (
-          <p role="status" className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading the upcoming schedule…</p>
-        ) : error ? (
-          <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">{error}</p>
-        ) : upcomingEvents.length ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {upcomingEvents.map((event) => <EventCard key={event._id} event={event} />)}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-sm">
-            <p className="text-lg font-bold text-slate-800">No upcoming events just yet</p>
-            <p className="mt-2 text-sm text-slate-600">Please check back soon or join us for Sunday worship.</p>
-          </div>
-        )}
-      </section>
-
-      <footer className="border-t border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+      <footer className="border-t border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-700">
         <p>Need directions or have a question? <Link to="/#connect-with-us" className="font-semibold text-emerald-800 underline underline-offset-4">Connect with us</Link>.</p>
       </footer>
     </main>

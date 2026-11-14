@@ -58,7 +58,7 @@ export default function PublicMinistriesPage() {
 
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-8 sm:py-16">
         {loading ? (
-          <p role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600">Loading ministries…</p>
+          <p role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-700">Loading ministries…</p>
         ) : error ? (
           <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-800">{error}</p>
         ) : (
@@ -68,7 +68,7 @@ export default function PublicMinistriesPage() {
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">Our ministries</p>
                 <h2 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Grow together, serve together</h2>
               </div>
-              <p className="max-w-lg text-sm leading-6 text-slate-600">
+              <p className="max-w-lg text-sm leading-6 text-slate-700">
                 Whether you’re exploring church for the first time or ready to get involved, we’d love to help you find a next step.
               </p>
             </div>
@@ -87,9 +87,9 @@ export default function PublicMinistriesPage() {
                       <div className={`grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br ${style.accent} text-2xl font-bold text-white shadow-lg`}>
                         <span aria-hidden="true">{style.icon}</span>
                       </div>
-                      <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">{style.label}</p>
+                      <p className="mt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-800">{style.label}</p>
                       <h3 className="mt-1 text-xl font-bold tracking-tight">{ministry.name}</h3>
-                      <p className="mt-3 min-h-12 whitespace-pre-line text-sm leading-6 text-slate-600">
+                      <p className="mt-3 min-h-12 whitespace-pre-line text-sm leading-6 text-slate-700">
                         {ministry.description || 'More information is coming soon. Contact the church to learn how to get involved.'}
                       </p>
                       <span className="mt-5 inline-flex min-h-10 items-center gap-2 text-sm font-bold text-emerald-800 underline decoration-emerald-300 underline-offset-4 transition group-hover:text-emerald-950">
