@@ -184,7 +184,7 @@ export default function AttendanceReportsPanel({ getIdToken, apiBaseUrl }) {
   ];
 
   return (
-    <section id="reports" className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg sm:p-6 dark:border-slate-700 dark:bg-slate-900">
+    <section id="reports" className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow duration-200 hover:shadow-lg sm:p-6 dark:border-slate-700 dark:bg-slate-900">
       <div className="no-print flex flex-col gap-4">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.18em] text-violet-700">Analytics</p>

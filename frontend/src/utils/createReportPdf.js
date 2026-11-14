@@ -7,6 +7,12 @@ const ROW_PADDING = 7;
 function pdfText(value) {
   return String(value ?? '')
     .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*[·•]\s*/g, ' - ')
+    .replace(/[–—−]/g, '-')
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/…/g, '...')
     .replace(/[^\x20-\x7E]/g, '?')
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')
@@ -109,14 +115,15 @@ function buildPageContent({
     commands.push(`${color} rg BT /${font} ${size} Tf ${x} ${y} Td (${pdfText(value)}) Tj ET`);
   };
 
-  text('THE LIFE BUILDER CHURCH', logoX + logoSize + 12, PDF_HEIGHT - 54, 15, 'F2');
-  text(title, logoX + logoSize + 12, PDF_HEIGHT - 74, 10, 'F1', '0.30 0.36 0.43');
-  text(`Generated: ${generatedAt}`, logoX, PDF_HEIGHT - 70, 8, 'F1', '0.33 0.38 0.44');
-  text(`Prepared by: ${preparedBy || 'Administrator'}`, logoX, PDF_HEIGHT - 84, 8, 'F1', '0.33 0.38 0.44');
+  const textX = logoX + logoSize + 12;
+  text('THE LIFE BUILDER CHURCH', textX, PDF_HEIGHT - 42, 15, 'F2');
+  text(title, textX, PDF_HEIGHT - 62, 10, 'F1', '0.30 0.36 0.43');
+  text(`Prepared by: ${preparedBy || 'Administrator'}`, textX, PDF_HEIGHT - 78, 8, 'F1', '0.33 0.38 0.44');
+  text(`Generated: ${generatedAt}`, textX, PDF_HEIGHT - 94, 8, 'F1', '0.33 0.38 0.44');
 
   if (pageIndex === 0 && summary.length) {
     let summaryX = logoX;
-    const summaryY = PDF_HEIGHT - 112;
+    const summaryY = PDF_HEIGHT - 126;
     summary.forEach((item) => {
       const label = String(item.label ?? '');
       const value = String(item.value ?? '');
@@ -129,7 +136,7 @@ function buildPageContent({
   }
 
   const tableTop = pageIndex === 0 && summary.length
-    ? PDF_HEIGHT - 139
+    ? PDF_HEIGHT - 153
     : PDF_HEIGHT - 112;
   const headerHeight = 24;
   let y = tableTop;
@@ -191,7 +198,7 @@ export async function createReportPdf(title, rows, metadata = {}) {
     { label: 'Records', value: tableRows.length },
   ];
   const preparedBy = metadata.preparedBy || 'Administrator';
-  const firstPageTop = PDF_HEIGHT - (summary.length ? 139 : 112);
+  const firstPageTop = PDF_HEIGHT - (summary.length ? 153 : 112);
   const firstPageAvailable = firstPageTop - PAGE_MARGIN - 24;
   const otherPageAvailable = PDF_HEIGHT - 112 - PAGE_MARGIN - 24;
   const estimatedRowHeights = tableRows.map((row) => {
