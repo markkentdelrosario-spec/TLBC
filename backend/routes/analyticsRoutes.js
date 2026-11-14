@@ -6,6 +6,7 @@ const {
 } = require('../middleware/authMiddleware');
 const AttendanceLog = require('../models/AttendanceLog');
 const Beneficiary = require('../models/Beneficiary');
+const LeaderboardState = require('../models/LeaderboardState');
 const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
 const {
@@ -324,10 +325,16 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
 
 router.get('/leaderboard', ...leaderboardAccess, async (req, res, next) => {
   try {
+    const leaderboardState = await LeaderboardState.findById('attendance')
+      .select('resetAt')
+      .lean();
     const members = await AttendanceLog.aggregate([
       {
         $match: {
           $or: [{ status: 'present' }, { status: { $exists: false } }],
+          ...(leaderboardState?.resetAt
+            ? { checkedInAt: { $gte: leaderboardState.resetAt } }
+            : {}),
         },
       },
       {

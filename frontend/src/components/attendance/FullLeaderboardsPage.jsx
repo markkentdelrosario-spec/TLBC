@@ -7,6 +7,7 @@ export default function FullLeaderboardsPage({
   getIdToken,
   apiBaseUrl = '/api',
   embedded = false,
+  resetKey = 0,
 }) {
   const { showToast } = useToast();
   const [members, setMembers] = useState([]);
@@ -27,7 +28,7 @@ export default function FullLeaderboardsPage({
     return () => {
       active = false;
     };
-  }, [apiBaseUrl, getIdToken, showToast]);
+  }, [apiBaseUrl, getIdToken, resetKey, showToast]);
 
   useEffect(() => {
     let active = true;

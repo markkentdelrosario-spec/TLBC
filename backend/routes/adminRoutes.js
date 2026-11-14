@@ -1,7 +1,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const { getAuth } = require('firebase-admin/auth');
+const firebaseApp = require('../config/firebaseAdmin');
 const { authenticate, authorizeRoles } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
+const LeaderboardState = require('../models/LeaderboardState');
 const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
 const { ensureDesignationTeamMemberships } = require('../services/designationTeams');
@@ -92,7 +95,7 @@ router.get('/users', ...adminOnly, async (req, res, next) => {
     const [users, memberProfiles] = await Promise.all([
       User.find({})
         .select(
-          'displayName email phoneNumber role secondaryDesignations profilePicture profilePhoto birthDate isActive'
+          'displayName email phoneNumber role secondaryDesignations profilePicture profilePhoto birthDate isActive isVerified'
         )
         .sort({ displayName: 1 })
         .lean(),
@@ -119,6 +122,74 @@ router.get('/users', ...adminOnly, async (req, res, next) => {
         secondaryDesignation: getDesignations(user),
         beneficiary: profileByUser.get(String(user._id)) || null,
       })),
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch('/users/:userId/status', ...adminOnly, async (req, res, next) => {
+  const { userId } = req.params;
+  const { isActive } = req.body || {};
+  if (!validObjectId(userId)) {
+    return res.status(400).json({ message: 'userId must be a valid user ID.' });
+  }
+  if (typeof isActive !== 'boolean') {
+    return res.status(400).json({ message: 'isActive must be a boolean.' });
+  }
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!user.isVerified) {
+      return res.status(409).json({
+        message: 'Accounts must complete email verification before their status can be changed.',
+      });
+    }
+    if (!user.firebaseUid) {
+      return res.status(409).json({
+        message: 'This account is not linked to Firebase and its sign-in status cannot be changed.',
+      });
+    }
+
+    const auth = getAuth(firebaseApp);
+    const firebaseUser = await auth.getUser(user.firebaseUid);
+    let firebaseStatusUpdated = false;
+    try {
+      await auth.updateUser(user.firebaseUid, { disabled: !isActive });
+      firebaseStatusUpdated = true;
+      user.isActive = isActive;
+      await user.save();
+    } catch (error) {
+      if (firebaseStatusUpdated) {
+        try {
+          await auth.updateUser(user.firebaseUid, { disabled: firebaseUser.disabled });
+        } catch (rollbackError) {
+          console.error('Unable to restore Firebase account status after a failed user update.', rollbackError);
+        }
+      }
+      return next(error);
+    }
+
+    return res.json({
+      message: `User account ${isActive ? 'activated' : 'deactivated'}.`,
+      user: { id: user._id, isActive: user.isActive },
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/leaderboard/reset', ...adminOnly, async (req, res, next) => {
+  try {
+    const resetAt = new Date();
+    await LeaderboardState.findOneAndUpdate(
+      { _id: 'attendance' },
+      { $set: { resetAt } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    return res.json({
+      message: 'Leaderboard reset. New attendance will count toward the rankings.',
+      resetAt,
     });
   } catch (error) {
     return next(error);
