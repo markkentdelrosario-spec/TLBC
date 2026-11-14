@@ -11,10 +11,12 @@ const mongoose = require('mongoose');
 const app = require('./app');
 const AttendanceLog = require('./models/AttendanceLog');
 const CustomEventAttendanceScan = require('./models/CustomEventAttendanceScan');
+const Notification = require('./models/Notification');
 const User = require('./models/User');
 const { validateBrevoConfig } = require('./services/email');
 const { initializeRealtime } = require('./realtime/realtime');
 const { markAbsentMembersIfDue } = require('./services/attendanceAbsence');
+const { sendUpcomingEventReminders } = require('./services/eventReminders');
 const {
   getChurchAttendanceClock,
   getChurchAttendanceSundayDate,
@@ -88,6 +90,7 @@ async function startServer() {
     { event: 1, user: 1 },
     { unique: true, name: 'custom_event_user_scan_unique' }
   );
+  await Notification.init();
   const userCollectionExists = await mongoose.connection.db
     .listCollections({ name: User.collection.name }, { nameOnly: true })
     .hasNext();
@@ -150,8 +153,25 @@ async function startServer() {
   const attendanceAbsenceTimer = setInterval(evaluateAttendanceAbsences, 30 * 1000);
   attendanceAbsenceTimer.unref();
 
+  let eventReminderEvaluationInProgress = false;
+  const evaluateUpcomingEventReminders = async () => {
+    if (eventReminderEvaluationInProgress) return;
+    eventReminderEvaluationInProgress = true;
+    try {
+      await sendUpcomingEventReminders();
+    } catch (error) {
+      console.error('Unable to send upcoming event reminders.', error);
+    } finally {
+      eventReminderEvaluationInProgress = false;
+    }
+  };
+  evaluateUpcomingEventReminders();
+  const eventReminderTimer = setInterval(evaluateUpcomingEventReminders, 30 * 1000);
+  eventReminderTimer.unref();
+
   const shutdown = async () => {
     clearInterval(attendanceAbsenceTimer);
+    clearInterval(eventReminderTimer);
     server.close(async () => {
       await mongoose.disconnect();
       process.exit(0);

@@ -11,6 +11,8 @@ const notificationRoutes = require('./notificationRoutes');
 const verseRoutes = require('./verseRoutes');
 const uploadRoutes = require('./uploadRoutes');
 const slideshowRoutes = require('./slideshowRoutes');
+const publicEventRoutes = require('./publicEventRoutes');
+const churchMinistryRoutes = require('./churchMinistryRoutes');
 const mongoose = require('mongoose');
 
 const router = express.Router();
@@ -24,6 +26,8 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/slideshows', slideshowRoutes);
+router.use('/events', publicEventRoutes);
+router.use('/ministries', churchMinistryRoutes);
 router.use('/admin', adminRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/birthdays', birthdayRoutes);

@@ -8,6 +8,8 @@ const navigationItems = [
   { label: 'About Us', href: '#about-us' },
   { label: 'Mission and Vision', href: '#mission-and-vision' },
   { label: 'Connect with Us', href: '#connect-with-us' },
+  { label: 'Events', href: '/events' },
+  { label: 'Ministries', href: '/ministries' },
   { label: 'Join Us', href: '#join-us' },
 ];
 
@@ -21,6 +23,13 @@ const TITLE_ANIMATION_INTERVAL_MS = (5 * 1000) / fullTitle.length;
 const TITLE_ANIMATION_PAUSE_MS = 3000;
 const sectionClass = 'scroll-mt-24 px-4 py-16 sm:px-8 sm:py-20 lg:py-24';
 const contentClass = 'mx-auto w-full max-w-6xl';
+
+function NavigationLink({ item, onClick, className }) {
+  if (item.href.startsWith('/')) {
+    return <Link to={item.href} onClick={onClick} className={className}>{item.label}</Link>;
+  }
+  return <a href={item.href} onClick={onClick} className={className}>{item.label}</a>;
+}
 
 export default function LandingPage() {
   const { user } = useAuth();
@@ -89,13 +98,11 @@ export default function LandingPage() {
 
           <nav aria-label="Main navigation" className="hidden items-center gap-1 lg:flex">
             {navigationItems.map((item) => (
-              <a
+              <NavigationLink
                 key={item.href}
-                href={item.href}
+                item={item}
                 className="rounded-full px-3 py-2 text-sm font-semibold text-emerald-50/90 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-amber-200"
-              >
-                {item.label}
-              </a>
+              />
             ))}
             <button
               type="button"
@@ -131,14 +138,12 @@ export default function LandingPage() {
           >
             <div className="mx-auto grid max-w-7xl gap-1">
               {navigationItems.map((item) => (
-                <a
+                <NavigationLink
                   key={item.href}
-                  href={item.href}
+                  item={item}
                   onClick={closeMobileMenu}
                   className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-emerald-50 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                >
-                  {item.label}
-                </a>
+                />
               ))}
               <button
                 type="button"

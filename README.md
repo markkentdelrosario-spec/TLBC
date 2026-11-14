@@ -6,6 +6,12 @@ the slideshow, add or replace static files in that folder and register them in
 `frontend/src/utils/localSlideshow.js`; the changes are included in the next
 frontend build.
 
+The public website includes an upcoming-events calendar at `/events` and a
+church ministries page at `/ministries`. Administrators manage public events
+and edit ministry descriptions from the Admin dashboard. Active registered
+users receive an in-app event reminder at 9:00 AM (church timezone) on the day
+before a published event; opted-in devices also receive a push notification.
+
 ## Deploying to Render
 
 Create the Web Service and Static Site from the root `render.yaml` Blueprint.

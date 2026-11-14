@@ -1368,7 +1368,13 @@ export default function ChurchDashboardShell({
                     {notifications.length ? notifications.map((notification) => (
                       <a
                         key={notification._id}
-                        href={notification.scope === 'birthday' ? '#birthday-celebrants' : '#announcements'}
+                        href={
+                          notification.scope === 'event'
+                            ? `/events${notification.entityId ? `?eventId=${encodeURIComponent(notification.entityId)}` : ''}`
+                            : notification.scope === 'birthday'
+                              ? '#birthday-celebrants'
+                              : '#announcements'
+                        }
                         onClick={() => {
                           closeNotifications();
                           if (!notification.readAt) markNotificationRead(notification._id);

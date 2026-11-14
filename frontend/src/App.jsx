@@ -9,6 +9,8 @@ import FullLeaderboardsPage from './components/attendance/FullLeaderboardsPage';
 import { AuthProvider, getRoleHomePath, useAuth } from './context/AuthContext';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
+import PublicEventsPage from './pages/PublicEventsPage';
+import PublicMinistriesPage from './pages/PublicMinistriesPage';
 import { apiBaseUrl } from './config/api';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
@@ -33,6 +35,8 @@ export default function App() {
           <BrowserRouter>
             <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/events" element={<PublicEventsPage />} />
+            <Route path="/ministries" element={<PublicMinistriesPage />} />
             <Route path="/login" element={<Login />} />
             <Route element={<ProtectedRoute allowedRoles={['member']} requiredDesignation="KSP Leader" />}>
               <Route

@@ -7,6 +7,8 @@ import FullLeaderboardsPage from '../attendance/FullLeaderboardsPage';
 import { getDesignations } from '../../utils/designations';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmationModal from '../shared/ConfirmationModal';
+import AdminPublicEvents from './AdminPublicEvents';
+import AdminChurchMinistries from './AdminChurchMinistries';
 
 const ROLES = [
   { value: 'admin', label: 'Admin' },
@@ -251,9 +253,17 @@ export default function AdminUserManagementDashboard({
               Assign system roles and member designations.
             </p>
           </div>
-          <button className={buttonClass} onClick={loadData} disabled={loading}>
-            {loading ? 'Loading accounts…' : 'Refresh accounts'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <a href="#public-events-management" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-800">
+              Manage events
+            </a>
+            <a href="#church-ministries-management" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-800">
+              Manage ministries
+            </a>
+            <button className={buttonClass} onClick={loadData} disabled={loading}>
+              {loading ? 'Loading accounts…' : 'Refresh accounts'}
+            </button>
+          </div>
         </header>
 
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -497,6 +507,8 @@ export default function AdminUserManagementDashboard({
           embedded
           resetKey={leaderboardResetKey}
         />
+        <AdminPublicEvents getIdToken={getIdToken} apiBaseUrl={apiBaseUrl} />
+        <AdminChurchMinistries getIdToken={getIdToken} apiBaseUrl={apiBaseUrl} />
         <p className="mt-4 text-xs leading-5 text-slate-500 dark:text-slate-400">
           Leaders can view their assigned group roster and upload ministry media. Attendance QR scanning is reserved for Admins.
         </p>

@@ -5,6 +5,13 @@ const User = require('../models/User');
 const { emitToAll, emitToUser } = require('../realtime/realtime');
 
 function pushPayload(notification) {
+  const url = notification.scope === 'event'
+    ? `/events${notification.entityId ? `?eventId=${notification.entityId}` : ''}`
+    : notification.scope === 'birthday'
+      ? '/#birthday-celebrants'
+      : notification.scope === 'attendance'
+        ? '/#dashboard'
+        : '/#announcements';
   return {
     notification: {
       title: notification.title,
@@ -15,19 +22,13 @@ function pushPayload(notification) {
       type: notification.type,
       scope: notification.scope || 'announcement',
       entityId: notification.entityId ? String(notification.entityId) : '',
-      url: notification.scope === 'birthday'
-        ? '/#birthday-celebrants'
-        : notification.scope === 'attendance' ? '/#dashboard' : '/#announcements',
+      url,
     },
     ...(process.env.PUBLIC_APP_URL
       ? {
           webpush: {
             fcmOptions: {
-              link: `${process.env.PUBLIC_APP_URL.replace(/\/$/, '')}/#${
-                notification.scope === 'birthday'
-                  ? 'birthday-celebrants'
-                  : notification.scope === 'attendance' ? 'dashboard' : 'announcements'
-              }`,
+              link: `${process.env.PUBLIC_APP_URL.replace(/\/$/, '')}${url}`,
             },
           },
         }
@@ -132,4 +133,70 @@ async function notifyAnnouncementPublished(announcement) {
   });
 }
 
-module.exports = { createNotification, notifyAnnouncementPublished };
+async function notifyUpcomingEvent(event) {
+  const recipients = await User.find({ isActive: true, isVerified: true })
+    .select('_id pushTokens')
+    .lean();
+  if (!recipients.length) return;
+
+  const eventDateKey = event.eventDate.toISOString().slice(0, 10);
+  const [eventYear, eventMonth, eventDay] = eventDateKey.split('-').map(Number);
+  const dateLabel = new Intl.DateTimeFormat('en-PH', {
+    timeZone: process.env.CHURCH_TIME_ZONE || 'Asia/Manila',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(new Date(Date.UTC(eventYear, eventMonth - 1, eventDay, 12)));
+  const timeLabel = event.startTime ? ` at ${event.startTime}` : '';
+  const dedupeKey = `event-reminder:${event._id}:${eventDateKey}:${event.startTime || ''}`;
+  const createdAt = new Date();
+  const writes = recipients.map((user) => ({
+    updateOne: {
+      filter: { dedupeKey: `${dedupeKey}:${user._id}` },
+      update: {
+        $setOnInsert: {
+          user: user._id,
+          actor: null,
+          type: 'event_reminder',
+          scope: 'event',
+          title: `Tomorrow: ${event.title}`.slice(0, 160),
+          message: `${dateLabel}${timeLabel}${event.location ? ` · ${event.location}` : ''}`.slice(0, 300),
+          entityId: event._id,
+          dedupeKey: `${dedupeKey}:${user._id}`,
+          createdAt,
+        },
+      },
+      upsert: true,
+    },
+  }));
+  const result = await Notification.bulkWrite(writes, { ordered: false });
+  const insertedIds = Object.values(result.upsertedIds || {});
+  if (!insertedIds.length) return;
+
+  const notifications = await Notification.find({ _id: { $in: insertedIds } })
+    .lean();
+  const recipientById = new Map(
+    recipients.map((user) => [String(user._id), user])
+  );
+  for (const notification of notifications) {
+    const payload = {
+      _id: notification._id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      entityId: notification.entityId,
+      scope: notification.scope,
+      readAt: notification.readAt,
+      createdAt: notification.createdAt,
+    };
+    emitToUser(notification.user, 'notification:new', payload);
+    const recipient = recipientById.get(String(notification.user));
+    if (recipient) void deliverPush(recipient, notification);
+  }
+}
+
+module.exports = {
+  createNotification,
+  notifyAnnouncementPublished,
+  notifyUpcomingEvent,
+};

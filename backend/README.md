@@ -116,6 +116,22 @@ are initialized from image filenames and can be edited or reordered afterward.
 Uploaded images and slide order are stored in Cloudinary and MongoDB
 respectively; the dashboard fetches the active slides after sign-in.
 
+## Public events and ministries
+
+Administrators can create, edit, publish, draft, or archive public events from
+the Admin dashboard. Published upcoming events are available without signing
+in at `/events`; the calendar uses the church timezone (`CHURCH_TIME_ZONE`,
+default `Asia/Manila`). The Admin dashboard also edits descriptions for the
+church's Worship Ministry, Media Team Ministry, Audio Team Ministry, Youth
+Ministry, and Small Groups. These descriptions are public at `/ministries`;
+internal member rosters are not exposed.
+
+The API sends one in-app reminder to each active, verified account at 9:00 AM
+on the local calendar day before a published event. Push delivery is attempted
+only for devices with a registered opt-in token. The reminder scheduler runs
+in the API process and records per-user deduplication keys so restarts do not
+create duplicate reminders.
+
 The built-in Bible reader offers the public translations provided by
 bible-api.com (WEB, KJV, ASV, BBE, Darby, YLT, and OEB-US). NKJV, NLT, and NIV
 are served by API.Bible. Configure `VITE_API_BIBLE_KEY` in the frontend build

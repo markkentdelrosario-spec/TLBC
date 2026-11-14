@@ -59,7 +59,7 @@ function getChurchAttendanceSundayDate(date = new Date()) {
   return sunday;
 }
 
-function parseDate(value, fieldName) {
+function parseChurchCalendarDate(value, fieldName) {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new RangeError(`${fieldName} must use YYYY-MM-DD format.`);
@@ -73,8 +73,8 @@ function parseDate(value, fieldName) {
 }
 
 function buildAttendanceDateMatch(startDate, endDate) {
-  const start = parseDate(startDate, 'startDate');
-  const end = parseDate(endDate, 'endDate');
+  const start = parseChurchCalendarDate(startDate, 'startDate');
+  const end = parseChurchCalendarDate(endDate, 'endDate');
 
   if (start && end && start > end) {
     throw new RangeError('startDate cannot be after endDate.');
@@ -96,4 +96,5 @@ module.exports = {
   getChurchAttendanceClock,
   getChurchAttendanceSundayDate,
   hasAttendanceCutoffPassed,
+  parseChurchCalendarDate,
 };
