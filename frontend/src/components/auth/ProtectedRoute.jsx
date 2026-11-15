@@ -70,7 +70,7 @@ export default function ProtectedRoute({
                 The Life Builder Church
               </span>
               <span className="block truncate text-xs capitalize text-slate-500">
-                {user.name || user.displayName} · {user.role.replace('_', ' ')}
+                {user?.name || user?.displayName || 'Church member'} · {user?.role?.replace('_', ' ') || 'member'}
               </span>
             </span>
           </Link>

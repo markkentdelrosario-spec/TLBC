@@ -1704,6 +1704,79 @@ export default function ChurchDashboardShell({
             </Link>
           )}
 
+          <section id="birthday-celebrants" className="mb-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Birthday celebrants</h2>
+                <p className="text-[10px] text-slate-400">{new Date().toLocaleString(undefined, { month: 'long' })}</p>
+              </div>
+              <a href="#birthday-celebrants" aria-label="Birthday celebrants" className="grid h-7 w-7 place-items-center rounded-full bg-pink-50 text-pink-600 hover:bg-pink-100">🎂</a>
+            </div>
+            {birthdays.length ? (
+              <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+                {birthdays.map((birthday) => (
+                  <div key={birthday.id} className="border-t border-slate-100 pt-3 first:border-0 first:pt-0">
+                    <div className="flex items-center gap-2">
+                      {birthday.profilePicture ? (
+                        <img src={birthday.profilePicture} alt="" className="h-8 w-8 rounded-full object-cover" />
+                      ) : (
+                        <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-50 text-xs font-bold text-pink-600">{birthday.name?.charAt(0)}</span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-slate-800">{birthday.name}</p>
+                        <p className="text-[10px] text-slate-400">{monthDay(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), birthday.day)))} {new Date().toLocaleString(undefined, { month: 'short' })}</p>
+                      </div>
+                      <button type="button" onClick={() => toggleReaction('birthday', birthday.id)} aria-label={`Send birthday greeting to ${birthday.name}`} aria-pressed={isReacted(birthday.reactions, user?._id)} className={`text-xs ${isReacted(birthday.reactions, user?._id) ? 'text-pink-600' : 'text-slate-400'}`}>
+                        ♥ {birthday.reactions?.length || 0}
+                      </button>
+                    </div>
+                    {(birthday.comments || []).map((comment) => (
+                      <div key={comment._id} className="mt-2 flex items-start gap-2">
+                        <p className="min-w-0 flex-1 text-[10px] text-slate-500 dark:text-slate-300">
+                          <b>{comment.user?.displayName || 'Member'}:</b> {comment.body}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label={`React to ${comment.user?.displayName || 'member'}'s birthday greeting`}
+                          aria-pressed={isReacted(comment.reactions, user?._id)}
+                          onClick={() => toggleCommentReaction('birthday', birthday.id, comment._id)}
+                          className={`inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] ${
+                            isReacted(comment.reactions, user?._id)
+                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200'
+                              : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/30'
+                          }`}
+                        >
+                          ♥ {comment.reactions?.length || 0}
+                        </button>
+                      </div>
+                    ))}
+                    <form className="mt-2 flex gap-1.5" onSubmit={(event) => { event.preventDefault(); addComment('birthday', birthday.id); }}>
+                      <input
+                        value={commentDrafts[`birthday-${birthday.id}`] || ''}
+                        onChange={(event) => setCommentDrafts((drafts) => ({ ...drafts, [`birthday-${birthday.id}`]: event.target.value }))}
+                        maxLength={1000}
+                        aria-label={`Write birthday greeting for ${birthday.name}`}
+                        placeholder="Write a greeting…"
+                        className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1.5 text-[10px] outline-none focus:border-pink-300"
+                      />
+                      <button className="rounded-md bg-pink-50 px-2 text-[10px] font-semibold text-pink-700">Send</button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs leading-5 text-slate-500">No birthdays have been added for this month yet.</p>
+            )}
+            {birthdays.length > 0 && (
+              <PaginationControls
+                page={birthdayPage}
+                totalPages={birthdayTotalPages}
+                onPageChange={(page) => loadBirthdays(page).catch((error) => setActionError(getErrorMessage(error)))}
+                label="Birthday celebrant pages"
+              />
+            )}
+          </section>
+
           <section id="announcements" className="mb-6">
             <div className="mb-3 flex items-end justify-between">
               <div>
@@ -2484,6 +2557,7 @@ export default function ChurchDashboardShell({
 
           <VerseOfDayCard
             id="verse-of-day"
+            className="hidden xl:block"
             verse={verse}
             verseError={verseError}
             verseReaction={verseReaction}
@@ -2520,79 +2594,6 @@ export default function ChurchDashboardShell({
               )}
             </section>
           )}
-
-          <section id="birthday-celebrants" className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Birthday celebrants</h2>
-                <p className="text-[10px] text-slate-400">{new Date().toLocaleString(undefined, { month: 'long' })}</p>
-              </div>
-              <a href="#birthday-celebrants" aria-label="Birthday celebrants" className="grid h-7 w-7 place-items-center rounded-full bg-pink-50 text-pink-600 hover:bg-pink-100">🎂</a>
-            </div>
-            {birthdays.length ? (
-              <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
-                {birthdays.map((birthday) => (
-                  <div key={birthday.id} className="border-t border-slate-100 pt-3 first:border-0 first:pt-0">
-                    <div className="flex items-center gap-2">
-                      {birthday.profilePicture ? (
-                        <img src={birthday.profilePicture} alt="" className="h-8 w-8 rounded-full object-cover" />
-                      ) : (
-                        <span className="grid h-8 w-8 place-items-center rounded-full bg-pink-50 text-xs font-bold text-pink-600">{birthday.name?.charAt(0)}</span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-slate-800">{birthday.name}</p>
-                        <p className="text-[10px] text-slate-400">{monthDay(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), birthday.day)))} {new Date().toLocaleString(undefined, { month: 'short' })}</p>
-                      </div>
-                      <button type="button" onClick={() => toggleReaction('birthday', birthday.id)} aria-label={`Send birthday greeting to ${birthday.name}`} aria-pressed={isReacted(birthday.reactions, user?._id)} className={`text-xs ${isReacted(birthday.reactions, user?._id) ? 'text-pink-600' : 'text-slate-400'}`}>
-                        ♥ {birthday.reactions?.length || 0}
-                      </button>
-                    </div>
-                    {(birthday.comments || []).map((comment) => (
-                      <div key={comment._id} className="mt-2 flex items-start gap-2">
-                        <p className="min-w-0 flex-1 text-[10px] text-slate-500 dark:text-slate-300">
-                          <b>{comment.user?.displayName || 'Member'}:</b> {comment.body}
-                        </p>
-                        <button
-                          type="button"
-                          aria-label={`React to ${comment.user?.displayName || 'member'}'s birthday greeting`}
-                          aria-pressed={isReacted(comment.reactions, user?._id)}
-                          onClick={() => toggleCommentReaction('birthday', birthday.id, comment._id)}
-                          className={`inline-flex min-h-8 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] ${
-                            isReacted(comment.reactions, user?._id)
-                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200'
-                              : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-900/30'
-                          }`}
-                        >
-                          ♥ {comment.reactions?.length || 0}
-                        </button>
-                      </div>
-                    ))}
-                    <form className="mt-2 flex gap-1.5" onSubmit={(event) => { event.preventDefault(); addComment('birthday', birthday.id); }}>
-                      <input
-                        value={commentDrafts[`birthday-${birthday.id}`] || ''}
-                        onChange={(event) => setCommentDrafts((drafts) => ({ ...drafts, [`birthday-${birthday.id}`]: event.target.value }))}
-                        maxLength={1000}
-                        aria-label={`Write birthday greeting for ${birthday.name}`}
-                        placeholder="Write a greeting…"
-                        className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1.5 text-[10px] outline-none focus:border-pink-300"
-                      />
-                      <button className="rounded-md bg-pink-50 px-2 text-[10px] font-semibold text-pink-700">Send</button>
-                    </form>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs leading-5 text-slate-500">No birthdays have been added for this month yet.</p>
-            )}
-            {birthdays.length > 0 && (
-              <PaginationControls
-                page={birthdayPage}
-                totalPages={birthdayTotalPages}
-                onPageChange={(page) => loadBirthdays(page).catch((error) => setActionError(getErrorMessage(error)))}
-                label="Birthday celebrant pages"
-              />
-            )}
-          </section>
 
         </aside>
       </div>

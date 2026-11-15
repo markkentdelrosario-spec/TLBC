@@ -162,9 +162,9 @@ export default function MemberQRCode({
               <div className="grid grid-cols-1 gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center md:gap-4">
                 <div className="digital-id-card__profile rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3 sm:p-4">
                   <div className="flex items-center gap-3">
-                    {user.profilePicture ? (
+                    {user?.profilePicture ? (
                       <img
-                        src={user.profilePicture}
+                        src={user?.profilePicture}
                         alt=""
                         crossOrigin="anonymous"
                         className="h-16 w-16 shrink-0 rounded-full border-2 border-white object-cover shadow-sm"
@@ -177,7 +177,7 @@ export default function MemberQRCode({
                     <div className="min-w-0">
                       <h3 className="break-words text-lg font-bold text-slate-900">{fullName}</h3>
                       <p className="mt-1 text-sm font-semibold text-emerald-800">
-                        {primaryDesignation[user.role] || 'Church Member'}
+                        {primaryDesignation[user?.role] || 'Church Member'}
                       </p>
                     </div>
                   </div>
@@ -192,19 +192,19 @@ export default function MemberQRCode({
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Group</p>
                       <p className="mt-1 break-words text-xs font-semibold text-slate-800">
-                        {user.groupName || 'Not assigned'}
+                        {user?.groupName || 'Not assigned'}
                       </p>
                     </div>
-                    {user.email && (
+                    {user?.email && (
                       <div className="col-span-2 min-w-0">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Email</p>
-                        <p className="mt-1 break-all text-xs text-slate-700">{user.email}</p>
+                        <p className="mt-1 break-all text-xs text-slate-700">{user?.email}</p>
                       </div>
                     )}
-                    {user.phoneNumber && (
+                    {user?.phoneNumber && (
                       <div className="col-span-2 min-w-0">
                         <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Phone</p>
-                        <p className="mt-1 text-xs text-slate-700">{user.phoneNumber}</p>
+                        <p className="mt-1 text-xs text-slate-700">{user?.phoneNumber}</p>
                       </div>
                     )}
                   </div>
