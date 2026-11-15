@@ -3,17 +3,72 @@ const mongoose = require('mongoose');
 const {
   authenticate,
   authorizeSecondaryDesignation,
+  authorizeSmallGroupLeader,
 } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
 const DesignationTeam = require('../models/DesignationTeam');
+const LifeCoachGroup = require('../models/LifeCoachGroup');
 const {
   getDesignations,
   getDesignationTeamKey,
+  hasDesignation,
 } = require('../utils/designations');
 const User = require('../models/User');
 const { ensureDesignationTeamMemberships } = require('../services/designationTeams');
 
 const router = express.Router();
+
+async function findManagedGroup(user) {
+  if (hasDesignation(user, 'Small Group Leader')) {
+    const ledGroup = await LifeCoachGroup.findOne({
+      leader: user._id,
+      isActive: true,
+    })
+      .sort({ createdAt: -1 })
+      .select('groupNumber name')
+      .lean();
+    if (ledGroup) return ledGroup;
+  }
+  const membership = await Beneficiary.findOne({
+    user: user._id,
+    isActive: true,
+  })
+    .select('group')
+    .populate('group', 'groupNumber name isActive');
+  return membership?.group?.isActive ? membership.group : null;
+}
+
+router.post('/', authenticate, authorizeSmallGroupLeader, async (req, res, next) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (name.length < 2 || name.length > 100) {
+    return res.status(400).json({
+      message: 'Group name must be between 2 and 100 characters.',
+    });
+  }
+
+  try {
+    const highestNumberedGroup = await LifeCoachGroup.findOne({})
+      .sort({ groupNumber: -1 })
+      .select('groupNumber')
+      .lean();
+    const group = await LifeCoachGroup.create({
+      groupNumber: (highestNumberedGroup?.groupNumber || 0) + 1,
+      name,
+      leader: req.user._id,
+    });
+    return res.status(201).json({
+      message: `${group.name} was created.`,
+      group: { _id: group._id, groupNumber: group.groupNumber, name: group.name },
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: 'A group was created at the same time. Please try again.',
+      });
+    }
+    return next(error);
+  }
+});
 
 router.get('/my-teams', authenticate, async (req, res, next) => {
   const designations = getDesignations(req.user);
@@ -187,27 +242,25 @@ router.get('/my-group', authenticate, async (req, res, next) => {
     });
   }
   try {
-    const memberProfile = await Beneficiary.findOne({
-      user: req.user._id,
-      isActive: true,
-    })
-      .select('group')
-      .populate('group', 'groupNumber name');
-    if (!memberProfile?.group) {
+    const group = await findManagedGroup(req.user);
+    if (!group) {
+      if (hasDesignation(req.user, 'Small Group Leader')) {
+        return res.json({ group: null, members: [] });
+      }
       return res.status(404).json({
         message: 'Assign this leader to an active group to use group tools.',
       });
     }
 
     const roster = await Beneficiary.find({
-      group: memberProfile.group._id,
+      group: group._id,
       isActive: true,
     })
       .populate('user', 'displayName secondaryDesignations profilePicture isActive')
       .sort({ createdAt: 1 })
       .lean();
     return res.json({
-      group: memberProfile.group,
+      group,
       members: roster
         .filter((member) => member.user?.isActive)
         .map((member) => ({
@@ -233,13 +286,10 @@ router.post('/members', authenticate, authorizeSecondaryDesignation, async (req,
   }
 
   try {
-    const leaderMembership = await Beneficiary.findOne({
-      user: req.user._id,
-      isActive: true,
-    }).populate('group', 'groupNumber name isActive');
-    if (!leaderMembership?.group?.isActive) {
+    const group = await findManagedGroup(req.user);
+    if (!group) {
       return res.status(403).json({
-        message: 'You must be assigned to an active group to add members.',
+        message: 'You must lead or be assigned to an active group to add members.',
       });
     }
 
@@ -256,7 +306,7 @@ router.post('/members', authenticate, authorizeSecondaryDesignation, async (req,
 
     let membership = await Beneficiary.findOne({ user: user._id });
     if (membership) {
-      if (!membership.group.equals(leaderMembership.group._id)) {
+      if (!membership.group.equals(group._id)) {
         return res.status(409).json({
           message: 'This member is already assigned to another group.',
         });
@@ -271,12 +321,12 @@ router.post('/members', authenticate, authorizeSecondaryDesignation, async (req,
     } else {
       membership = await Beneficiary.create({
         user: user._id,
-        group: leaderMembership.group._id,
+        group: group._id,
       });
     }
 
     return res.status(201).json({
-      message: `${user.displayName} was added to ${leaderMembership.group.name}.`,
+      message: `${user.displayName} was added to ${group.name}.`,
       member: {
         id: user._id,
         name: user.displayName,
@@ -310,19 +360,16 @@ router.delete(
     }
 
     try {
-      const leaderMembership = await Beneficiary.findOne({
-        user: req.user._id,
-        isActive: true,
-      }).populate('group', 'groupNumber name isActive');
-      if (!leaderMembership?.group?.isActive) {
+      const group = await findManagedGroup(req.user);
+      if (!group) {
         return res.status(403).json({
-          message: 'You must be assigned to an active group to manage its members.',
+          message: 'You must lead or be assigned to an active group to manage its members.',
         });
       }
 
       const memberProfile = await Beneficiary.findOne({
         user: userId,
-        group: leaderMembership.group._id,
+        group: group._id,
         isActive: true,
       })
         .populate('user', 'displayName')
@@ -335,7 +382,7 @@ router.delete(
 
       const result = await Beneficiary.deleteOne({
         _id: memberProfile._id,
-        group: leaderMembership.group._id,
+        group: group._id,
         isActive: true,
       });
       if (!result.deletedCount) {
@@ -345,7 +392,7 @@ router.delete(
       }
 
       return res.json({
-        message: `${memberProfile.user?.displayName || 'Member'} was removed from ${leaderMembership.group.name}. Their account remains active.`,
+        message: `${memberProfile.user?.displayName || 'Member'} was removed from ${group.name}. Their account remains active.`,
       });
     } catch (error) {
       return next(error);

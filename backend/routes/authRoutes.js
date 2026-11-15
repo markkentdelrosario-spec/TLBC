@@ -56,7 +56,7 @@ async function registerManualAccount(req, res, next) {
         code: existingUser.isVerified ? 'ACCOUNT_ALREADY_EXISTS' : 'REGISTRATION_PENDING',
         message: existingUser.isVerified
           ? 'An account already exists for this Gmail address. Please sign in.'
-          : 'A registration is already pending for this Gmail address. Use the same password you originally entered, then resend the verification code if you did not receive it.',
+          : 'A registration or invitation is already pending for this Gmail address. Continue with the verification code and the password you chose.',
       });
     }
 
@@ -114,7 +114,7 @@ router.post('/verify-otp', async (req, res, next) => {
   try {
     const pendingUser = await User.findOne({ email, isVerified: false })
       .select('+otp +otpExpires +otpAttempts +passwordHash');
-    if (!pendingUser?.otp || !pendingUser.passwordHash) {
+    if (!pendingUser?.otp) {
       return res.status(400).json({
         message: 'No pending registration was found. Request a new verification code.',
       });
@@ -135,7 +135,9 @@ router.post('/verify-otp', async (req, res, next) => {
 
     const [validOtp, validPassword] = await Promise.all([
       bcrypt.compare(otp, pendingUser.otp),
-      bcrypt.compare(password, pendingUser.passwordHash),
+      pendingUser.passwordHash
+        ? bcrypt.compare(password, pendingUser.passwordHash)
+        : Promise.resolve(true),
     ]);
     if (!validOtp) {
       pendingUser.otpAttempts += 1;
@@ -176,7 +178,7 @@ router.post('/verify-otp', async (req, res, next) => {
       pendingUser.otp = undefined;
       pendingUser.otpExpires = null;
       pendingUser.otpAttempts = 0;
-      pendingUser.passwordHash = undefined;
+      pendingUser.passwordHash = await bcrypt.hash(password, OTP_HASH_ROUNDS);
       await pendingUser.save();
     } catch (error) {
       await getAuth(firebaseApp).deleteUser(firebaseUser.uid).catch((deleteError) => {
@@ -207,7 +209,7 @@ router.post('/resend-otp', async (req, res, next) => {
   try {
     const pendingUser = await User.findOne({ email, isVerified: false })
       .select('+otp +otpExpires +otpLastSentAt +passwordHash');
-    if (!pendingUser?.passwordHash) {
+    if (!pendingUser) {
       return res.status(400).json({
         message: 'No pending registration was found. Start sign-up again.',
       });
@@ -308,6 +310,8 @@ router.patch('/profile', authenticate, async (req, res, next) => {
   const phoneNumber =
     typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : '';
   const birthDate = body.birthDate;
+  const isGoogleSignIn =
+    req.firebaseUser?.firebase?.sign_in_provider === 'google.com';
   if (!displayName || displayName.length > 120) {
     return res.status(400).json({
       message: 'Full name is required and must be 120 characters or fewer.',
@@ -316,6 +320,11 @@ router.patch('/profile', authenticate, async (req, res, next) => {
   if (phoneNumber.length > 32) {
     return res.status(400).json({
       message: 'Phone number must be 32 characters or fewer.',
+    });
+  }
+  if (isGoogleSignIn && (typeof birthDate !== 'string' || !birthDate)) {
+    return res.status(400).json({
+      message: 'Birthday is required for accounts signed in with Google.',
     });
   }
   if (

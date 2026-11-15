@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const {
   authenticate,
-  authorizeKspLeader,
+  authorizeLifeCoach,
   authorizeAttendanceStatusManagement,
 } = require('../middleware/authMiddleware');
 const AttendanceLog = require('../models/AttendanceLog');
@@ -25,7 +25,7 @@ const sundayAttendanceMessages = {
   late: 'Glad you made it this Sunday! Hope to see you a little earlier next time.',
   absent: 'We missed you this Sunday! Praying for you and hoping to see you next week.',
 };
-const canCheckIn = [authenticate, authorizeKspLeader];
+const canCheckIn = [authenticate, authorizeLifeCoach];
 const canManageAttendanceStatus = [authenticate, authorizeAttendanceStatusManagement];
 
 function escapeRegex(value) {
@@ -219,7 +219,7 @@ router.patch('/status/:userId', ...canManageAttendanceStatus, async (req, res, n
   try {
     const memberProfile = await findMemberProfile(req.user);
     if (req.user.role === 'member' && !memberProfile?.group) {
-      return res.status(403).json({ message: 'No active group is assigned to this KSP Leader.' });
+      return res.status(403).json({ message: 'No active group is assigned to this LIFE COACH.' });
     }
     if (req.user.role === 'admin' && !mongoose.isValidObjectId(groupId)) {
       return res.status(400).json({ message: 'groupId is required for admin status updates.' });
@@ -294,47 +294,61 @@ router.patch('/status/:userId', ...canManageAttendanceStatus, async (req, res, n
 
 router.get('/search', ...canCheckIn, async (req, res, next) => {
   const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 10;
   if (query.length < 2 || query.length > 100) {
     return res
       .status(400)
       .json({ message: 'query must be between 2 and 100 characters.' });
   }
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
 
   try {
-    const memberProfile = await findMemberProfile(req.user);
-    const memberGroup = memberProfile?.group;
-    if (req.user.role === 'member' && !memberGroup) {
-      return res
-        .status(403)
-        .json({ message: 'No active group is assigned to this member.' });
-    }
-
     const pattern = new RegExp(escapeRegex(query), 'i');
-    const users = await User.find({
-      role: 'member',
+    const filter = {
       isActive: true,
       $or: [
         { displayName: pattern },
         { email: pattern },
         { phoneNumber: pattern },
       ],
-    })
-      .select('_id displayName email phoneNumber')
-      .limit(50)
-      .lean();
+    };
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select('_id displayName email phoneNumber')
+        .sort({ displayName: 1, _id: 1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
 
-    if (users.length === 0) return res.json({ beneficiaries: [] });
-    const beneficiaries = await Beneficiary.find({
+    const profiles = await Beneficiary.find({
       isActive: true,
       user: { $in: users.map((user) => user._id) },
-      ...(memberGroup ? { group: memberGroup._id } : {}),
     })
-      .populate('user', 'displayName email phoneNumber')
       .populate('group', 'groupNumber name')
-      .limit(20)
       .lean();
+    const profileByUser = new Map(
+      profiles.map((profile) => [String(profile.user), profile])
+    );
 
-    return res.json({ beneficiaries });
+    return res.json({
+      users: users.map((user) => {
+        const profile = profileByUser.get(String(user._id));
+        return {
+          ...user,
+          beneficiaryId: profile?._id || null,
+          group: profile?.group || null,
+        };
+      }),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     return next(error);
   }
@@ -384,14 +398,6 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
   }
 
   try {
-    const memberProfile = await findMemberProfile(req.user);
-    const memberGroup = memberProfile?.group;
-    if (req.user.role === 'member' && !memberGroup) {
-      return res
-        .status(403)
-        .json({ message: 'No active group is assigned to this member.' });
-    }
-
     let targetUser;
     let beneficiary;
     const scannedUserId =
@@ -426,16 +432,6 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
     if (!targetUser || !targetUser.isActive) {
       return res.status(404).json({ message: 'Active user not found.' });
     }
-    if (
-      beneficiary?.group?.isActive &&
-      memberGroup &&
-      !beneficiary.group._id.equals(memberGroup._id)
-    ) {
-      return res.status(403).json({
-        message: 'Members can only check in beneficiaries from their assigned group.',
-      });
-    }
-
     const attendanceDate = getChurchAttendanceSundayDate(checkedInAt);
     const duplicateQuery = {
       attendanceDate,

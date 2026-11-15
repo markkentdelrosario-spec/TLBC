@@ -59,18 +59,18 @@ Attendance dates and evaluations use `CHURCH_TIME_ZONE` (default
 members without a check-in once the Sunday 11:00 AM cutoff passes.
 
 Secondary designations create ministry teams automatically: for example,
-`KSP Leader` maps to the `KSP` team, `Youth Leader` to `Youth`, and both
+`LIFE COACH` maps to the `KSP` team, `Youth Leader` to `Youth`, and both
 `Worship Leader` and `Worship Team Member` to `Worship Team`. A member's multiple
 designations can enroll them in multiple teams. Designated members can view
 their teams and the active member directory through `GET /api/groups/my-teams`.
 Leaders can add a registered active member with `POST /api/groups/team-members`
 using `teamId` and `userId`, or remove a team assignment with
-`DELETE /api/groups/team-members/:teamId/:userId`. KSP leaders can remove a
+`DELETE /api/groups/team-members/:teamId/:userId`. LIFE COACHES can remove a
 member from their numbered group with `DELETE /api/groups/members/:userId`;
 these actions remove assignments, not user accounts. Ministry teams are separate
 from the three numbered KSP attendance groups. The QR scanner check-in endpoint
 accepts attendance only on Sunday in `CHURCH_TIME_ZONE` (Render is configured
-for `Asia/Manila`). The scanner and attendance endpoints require the KSP Leader
+for `Asia/Manila`). The scanner and attendance endpoints require the LIFE COACH
 secondary designation. Google and Facebook users can set an email/password credential in
 account settings; the authenticated `POST /api/auth/set-password` endpoint
 updates Firebase Authentication and stores a bcrypt hash in MongoDB. Firebase
@@ -81,12 +81,21 @@ invalidated after five incorrect attempts. The API endpoints are
 `POST /api/auth/register`, `POST /api/auth/verify-otp`, and
 `POST /api/auth/resend-otp`.
 
-KSP Leaders can create custom events at `POST /api/custom-events` with category
-`KSP Gathering`, `Seminars`, or `Other` (the last requires `customName`). Select
-an event and scan member QR IDs at `POST /api/custom-events/:eventId/scans`.
-Custom event scans are written to the dedicated MongoDB collection
-`custom_event_attendance_scans`, separately from Sunday attendance, with one
-scan per member per event.
+LIFE COACHES can create shared custom events at `POST /api/custom-events` with
+category `KSP Gathering`, `Seminars`, or `Other` (the last requires
+`customName`). All LIFE COACHES can select an event, scan an active user's QR ID
+at `POST /api/custom-events/:eventId/scans`, and view its paginated attendee
+list at `GET /api/custom-events/:eventId/attendees`. Custom event scans are
+written to the dedicated MongoDB collection `custom_event_attendance_scans`,
+separately from Sunday attendance, with one scan per user per event. Active
+special events are also included on the public events calendar using their
+creation date.
+
+Members assigned the `Small Group Leader` designation can create a small group
+from their dashboard or with `POST /api/groups`. Created groups are numbered
+sequentially and the creator is recorded as their leader. Admin-created member
+invitations require a birthday and send an OTP to complete registration; the
+invitee sets their password during verification.
 
 ## Local admin testing
 

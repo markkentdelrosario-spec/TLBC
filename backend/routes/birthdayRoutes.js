@@ -25,15 +25,35 @@ async function findCelebrant(userId, month) {
 router.get('/', authenticate, async (req, res, next) => {
   const now = new Date();
   const month = now.getUTCMonth() + 1;
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 5;
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
+  const filter = {
+    isActive: true,
+    birthDate: { $ne: null },
+    $expr: { $eq: [{ $month: '$birthDate' }, month] },
+  };
   try {
-    const celebrants = await User.find({
-      isActive: true,
-      birthDate: { $ne: null },
-      $expr: { $eq: [{ $month: '$birthDate' }, month] },
-    })
-      .select('displayName profilePicture profilePhoto birthDate')
-      .sort({ displayName: 1 })
-      .lean();
+    const [celebrants, total] = await Promise.all([
+      User.aggregate([
+        { $match: filter },
+        {
+          $project: {
+            displayName: 1,
+            profilePicture: 1,
+            profilePhoto: 1,
+            birthDate: 1,
+            day: { $dayOfMonth: '$birthDate' },
+          },
+        },
+        { $sort: { day: 1, displayName: 1, _id: 1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+      ]),
+      User.countDocuments(filter),
+    ]);
     const interactions = await BirthdayGreeting.find({
       year: now.getUTCFullYear(),
       celebrant: { $in: celebrants.map((user) => user._id) },
@@ -46,17 +66,21 @@ router.get('/', authenticate, async (req, res, next) => {
       interactions.map((item) => [String(item.celebrant), item])
     );
     return res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
       birthdays: celebrants.map((user) => {
         const interaction = byCelebrant.get(String(user._id));
         return {
           id: user._id,
           name: user.displayName,
-          day: new Date(user.birthDate).getUTCDate(),
+          day: user.day,
           profilePicture: user.profilePicture || user.profilePhoto?.url || null,
           reactions: interaction?.reactions || [],
           comments: interaction?.comments || [],
         };
-      }).sort((left, right) => left.day - right.day || left.name.localeCompare(right.name)),
+      }),
     });
   } catch (error) {
     return next(error);

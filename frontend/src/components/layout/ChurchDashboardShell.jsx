@@ -23,6 +23,7 @@ import ImageUpload from '../shared/ImageUpload';
 import ConfirmationModal from '../shared/ConfirmationModal';
 import AttendanceMonitoringPanel from '../attendance/AttendanceMonitoringPanel';
 import OfferOnlineModal from '../shared/OfferOnlineModal';
+import PaginationControls from '../shared/PaginationControls';
 
 const BIBLE_TRANSLATIONS = [
   ['web', 'World English Bible (WEB)'],
@@ -135,6 +136,28 @@ async function fetchApiBibleReference(reference, translation) {
   };
 }
 
+async function createSmallGroup(event) {
+  event.preventDefault();
+  setSmallGroupError('');
+  setSmallGroupMessage('');
+  setCreatingGroup(true);
+  try {
+    const result = await apiRequest('/groups', {
+      getIdToken,
+      apiBaseUrl,
+      method: 'POST',
+      body: JSON.stringify({ name: newGroupName.trim() }),
+    });
+    setNewGroupName('');
+    setSmallGroupMessage(result.message);
+    await Promise.all([loadSmallGroup(), refreshProfile()]);
+  } catch (error) {
+    setSmallGroupError(getErrorMessage(error));
+  } finally {
+    setCreatingGroup(false);
+  }
+}
+
 function isReacted(reactions, userId) {
   return (reactions || []).some((reaction) => {
     const reactionUser = typeof reaction === 'string'
@@ -201,9 +224,11 @@ export default function ChurchDashboardShell({
 }) {
   const { user, firebaseUser, logout, refreshProfile, changePassword, setPassword } = useAuth();
   const { showToast } = useToast();
-  const isKspLeader =
+  const isLifeCoach =
     user?.role === 'member' &&
-    hasDesignation(user, 'KSP Leader');
+    hasDesignation(user, 'LIFE COACH');
+  const isSmallGroupLeader =
+    user?.role === 'member' && hasDesignation(user, 'Small Group Leader');
   const settingsRef = useRef(null);
   const notificationsRef = useRef(null);
   const bibleRequestVersion = useRef(0);
@@ -211,7 +236,10 @@ export default function ChurchDashboardShell({
   const notificationsOpenRef = useRef(false);
   const [announcements, setAnnouncements] = useState([]);
   const [birthdays, setBirthdays] = useState([]);
+  const [specialEvents, setSpecialEvents] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [notificationPage, setNotificationPage] = useState(1);
+  const [notificationTotalPages, setNotificationTotalPages] = useState(1);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -240,6 +268,13 @@ export default function ChurchDashboardShell({
   const [smallGroupError, setSmallGroupError] = useState('');
   const [smallGroupMessage, setSmallGroupMessage] = useState('');
   const [smallGroupMemberRemoving, setSmallGroupMemberRemoving] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [birthdayPage, setBirthdayPage] = useState(1);
+  const [birthdayTotalPages, setBirthdayTotalPages] = useState(1);
+  const [smallGroupMemberPage, setSmallGroupMemberPage] = useState(1);
+  const [teamMemberPages, setTeamMemberPages] = useState({});
+  const [availableMemberPage, setAvailableMemberPage] = useState(1);
   const [confirmation, setConfirmation] = useState(null);
   const [selectedTeamMembers, setSelectedTeamMembers] = useState({});
   const [groupMemberBusy, setGroupMemberBusy] = useState(false);
@@ -305,18 +340,30 @@ export default function ChurchDashboardShell({
     setAnnouncements(Array.isArray(result) ? result : result.announcements || []);
   }, [apiBaseUrl, getIdToken]);
 
-  const loadNotifications = useCallback(async () => {
-    const result = await apiRequest('/notifications', { getIdToken, apiBaseUrl });
+  const loadNotifications = useCallback(async (page = 1) => {
+    const result = await apiRequest(`/notifications?page=${page}&limit=10`, { getIdToken, apiBaseUrl });
     notificationIds.current = new Set(
       (result.notifications || []).map((notification) => String(notification._id))
     );
     setNotifications(result.notifications || []);
     setUnreadNotificationCount(result.unreadCount || 0);
+    setNotificationPage(result.page || page);
+    setNotificationTotalPages(result.totalPages || 1);
   }, [apiBaseUrl, getIdToken]);
 
-  const loadBirthdays = useCallback(async () => {
-    const result = await apiRequest('/birthdays', { getIdToken, apiBaseUrl });
+  const loadBirthdays = useCallback(async (page = 1) => {
+    const result = await apiRequest(`/birthdays?page=${page}&limit=5`, { getIdToken, apiBaseUrl });
     setBirthdays(result.birthdays || []);
+    setBirthdayPage(result.page || page);
+    setBirthdayTotalPages(result.totalPages || 1);
+  }, [apiBaseUrl, getIdToken]);
+
+  const loadSpecialEvents = useCallback(async () => {
+    const result = await apiRequest('/custom-events?page=1&limit=5', {
+      getIdToken,
+      apiBaseUrl,
+    });
+    setSpecialEvents(result.events || []);
   }, [apiBaseUrl, getIdToken]);
 
   const loadMedia = useCallback(async () => {
@@ -329,6 +376,7 @@ export default function ChurchDashboardShell({
 
   const loadSmallGroup = useCallback(async () => {
     setSmallGroup(null);
+    setSmallGroupMemberPage(1);
     setSmallGroupLoading(true);
     setSmallGroupError('');
     try {
@@ -401,6 +449,11 @@ export default function ChurchDashboardShell({
         });
         socket.on('announcement:published', () => {
           loadAnnouncements().catch((error) => setActionError(getErrorMessage(error)));
+        });
+        socket.on('special-event:created', () => {
+          if (isLifeCoach) {
+            loadSpecialEvents().catch((error) => setActionError(getErrorMessage(error)));
+          }
         });
         socket.on('attendance:recorded', () => {
           window.dispatchEvent(new CustomEvent('tlbc:attendance-recorded'));
@@ -538,6 +591,8 @@ export default function ChurchDashboardShell({
     getIdToken,
     loadAnnouncements,
     loadBirthdays,
+    loadSpecialEvents,
+    isLifeCoach,
     user?._id,
     user?.role,
   ]);
@@ -605,7 +660,12 @@ export default function ChurchDashboardShell({
           }
         });
     }
-    if (isKspLeader) loadSmallGroup();
+    if (isLifeCoach || isSmallGroupLeader) loadSmallGroup();
+    if (isLifeCoach) {
+      loadSpecialEvents().catch((error) => {
+        if (active) setActionError(getErrorMessage(error));
+      });
+    }
     return () => {
       active = false;
     };
@@ -616,7 +676,9 @@ export default function ChurchDashboardShell({
     loadBirthdays,
     loadMedia,
     loadSmallGroup,
-    isKspLeader,
+    loadSpecialEvents,
+    isLifeCoach,
+    isSmallGroupLeader,
     user?.role,
     user?.secondaryDesignations,
     user?.secondaryDesignation,
@@ -818,6 +880,7 @@ export default function ChurchDashboardShell({
             : item
         ),
       }));
+      setTeamMemberPages((current) => ({ ...current, [team.id]: 1 }));
       setGroupMemberMessage(result.message);
     } catch (error) {
       setGroupMemberError(getErrorMessage(error));
@@ -841,6 +904,7 @@ export default function ChurchDashboardShell({
           (currentMember) => String(currentMember.id) !== String(member.id)
         ),
       }));
+      setSmallGroupMemberPage(1);
       setSmallGroupMessage(result.message);
     } catch (error) {
       setSmallGroupError(getErrorMessage(error));
@@ -1054,6 +1118,7 @@ export default function ChurchDashboardShell({
         apiBaseUrl,
       });
       setLeadershipGroup(updatedGroup);
+      setAvailableMemberPage(1);
       setSelectedTeamMembers((current) => ({
         ...current,
         [formData.get('teamId')]: '',
@@ -1241,7 +1306,7 @@ export default function ChurchDashboardShell({
             {[
               ...navItems.filter((item) => item.label !== 'Tasks' || isLeader),
               ...(user?.role === 'admin' ? [{ label: 'User management', href: '#user-management', icon: '♙' }] : []),
-              ...(isKspLeader ? [{ label: 'Attendance', href: '#attendance-monitoring', icon: '✓' }] : []),
+              ...(isLifeCoach ? [{ label: 'Attendance', href: '#attendance-monitoring', icon: '✓' }] : []),
               ...(canViewReports ? [{ label: 'Reports', href: '#reports', icon: '▥' }] : []),
               ...(user?.role === 'admin' ? [{ label: 'Welcome slides', href: '#slideshow-management', icon: '▧' }] : []),
             ].map((item, index) => (
@@ -1342,7 +1407,7 @@ export default function ChurchDashboardShell({
                 aria-label="Notifications"
                 aria-hidden={!notificationsOpen}
                 inert={!notificationsOpen}
-                className={`absolute right-0 top-12 z-30 w-[min(90vw,360px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-all duration-300 ease-in-out motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-900 ${
+                className={`fixed left-3 right-3 top-20 z-50 max-h-[calc(100dvh-6rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-all duration-200 ease-out motion-reduce:transition-none dark:border-slate-700 dark:bg-slate-900 sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:max-h-[min(80vh,620px)] sm:w-[min(90vw,360px)] ${
                   notificationsOpen
                     ? 'translate-y-0 scale-100 opacity-100'
                     : 'pointer-events-none -translate-y-2 scale-95 opacity-0'
@@ -1364,7 +1429,7 @@ export default function ChurchDashboardShell({
                       ×
                     </button>
                   </div>
-                  <div className="max-h-[min(55vh,420px)] overflow-y-auto overscroll-contain">
+                  <div className="max-h-[calc(100dvh-15rem)] overflow-y-auto overscroll-contain sm:max-h-[min(55vh,420px)]">
                     {notifications.length ? notifications.map((notification) => (
                       <a
                         key={notification._id}
@@ -1397,6 +1462,14 @@ export default function ChurchDashboardShell({
                     )) : (
                       <p className="px-4 py-6 text-center text-xs text-slate-500">No notifications yet.</p>
                     )}
+                  </div>
+                  <div className="px-3">
+                    <PaginationControls
+                      page={notificationPage}
+                      totalPages={notificationTotalPages}
+                      onPageChange={(page) => loadNotifications(page).catch((error) => setActionError(getErrorMessage(error)))}
+                      label="Notification pages"
+                    />
                   </div>
                   <div className="border-t border-slate-100 p-3 dark:border-slate-700">
                     <button
@@ -1493,7 +1566,7 @@ export default function ChurchDashboardShell({
                   {[
                     ...navItems.filter((item) => item.label !== 'Tasks' || isLeader),
                     ...(user?.role === 'admin' ? [{ label: 'User management', href: '#user-management', icon: '♙' }] : []),
-                    ...(isKspLeader ? [{ label: 'Attendance', href: '#attendance-monitoring', icon: '✓' }] : []),
+                    ...(isLifeCoach ? [{ label: 'Attendance', href: '#attendance-monitoring', icon: '✓' }] : []),
                     ...(canViewReports ? [{ label: 'Reports', href: '#reports', icon: '▥' }] : []),
                     ...(user?.role === 'admin' ? [{ label: 'Welcome slides', href: '#slideshow-management', icon: '▧' }] : []),
                   ].map((item) => (
@@ -1552,12 +1625,13 @@ export default function ChurchDashboardShell({
             aria-label="Church welcome slideshow"
             className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900"
           >
-            <div className="flex min-h-40 items-center justify-center bg-slate-950">
+            <div className="aspect-video w-full overflow-hidden bg-slate-950">
               <img
                 key={welcomeSlides[welcomeIndex]?.id}
                 src={welcomeSlides[welcomeIndex]?.src}
                 alt={welcomeSlides[welcomeIndex]?.title || 'Church welcome'}
-                className="welcome-slideshow-image block h-auto max-h-[min(60vh,520px)] w-full object-contain"
+                className="welcome-slideshow-image block h-full w-full object-cover"
+                decoding="async"
               />
             </div>
             <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -1905,6 +1979,45 @@ export default function ChurchDashboardShell({
                   ? `You serve as ${designationText}.`
                   : 'Stay connected with your small group and find a way to serve.'}
             </p>
+            {isSmallGroupLeader && (
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                {smallGroupLoading ? (
+                  <p role="status" className="text-sm text-slate-500">Checking your small-group assignment…</p>
+                ) : smallGroup?.group ? (
+                  <>
+                    <p className="text-sm font-semibold text-slate-800">{smallGroup.group.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {smallGroup.members.length} active member{smallGroup.members.length === 1 ? '' : 's'}
+                    </p>
+                  </>
+                ) : null}
+                {!smallGroupLoading && (
+                  <form className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end" onSubmit={createSmallGroup}>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      {smallGroup?.group ? 'Create another small group' : 'Create a small group'}
+                      <input
+                        required
+                        minLength={2}
+                        maxLength={100}
+                        value={newGroupName}
+                        onChange={(event) => setNewGroupName(event.target.value)}
+                        className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+                        placeholder="Enter group name"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={creatingGroup || !newGroupName.trim()}
+                      className="min-h-11 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                    >
+                      {creatingGroup ? 'Creating…' : 'Create group'}
+                    </button>
+                  </form>
+                )}
+                {smallGroupError && <p role="alert" className="mt-2 text-sm text-red-700">{smallGroupError}</p>}
+                {smallGroupMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{smallGroupMessage}</p>}
+              </div>
+            )}
           </section>
 
           {hasDesignatedTeam && leadershipGroup && (
@@ -1936,7 +2049,9 @@ export default function ChurchDashboardShell({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50">
-                            {team.members.map((member) => (
+                            {team.members
+                              .slice(((teamMemberPages[team.id] || 1) - 1) * 10, (teamMemberPages[team.id] || 1) * 10)
+                              .map((member) => (
                               <tr key={member.id}>
                                 <td className="py-2 pr-4 font-medium text-slate-700">{member.name}</td>
                                 <td className="py-2 pr-4 text-slate-500">{member.email}</td>
@@ -1962,6 +2077,14 @@ export default function ChurchDashboardShell({
                           </tbody>
                         </table>
                       </div>
+                      <PaginationControls
+                        page={teamMemberPages[team.id] || 1}
+                        totalPages={Math.ceil(team.members.length / 10)}
+                        onPageChange={(page) =>
+                          setTeamMemberPages((current) => ({ ...current, [team.id]: page }))
+                        }
+                        label={`${team.name} members pages`}
+                      />
                       {canAddGroupMembers && team.canManage && (
                         <form onSubmit={addGroupMember} className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row">
                           <input type="hidden" name="teamId" value={team.id} />
@@ -2016,7 +2139,9 @@ export default function ChurchDashboardShell({
                       <tr><th className="py-2 pr-4">Member</th><th className="py-2 pr-4">Email</th><th className="py-2">Designations</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {leadershipGroup.availableMembers.map((member) => (
+                      {leadershipGroup.availableMembers
+                        .slice((availableMemberPage - 1) * 10, availableMemberPage * 10)
+                        .map((member) => (
                         <tr key={member.id}>
                           <td className="py-2 pr-4 font-medium text-slate-700">{member.name}</td>
                           <td className="py-2 pr-4 text-slate-500">{member.email}</td>
@@ -2026,12 +2151,20 @@ export default function ChurchDashboardShell({
                     </tbody>
                   </table>
                 </div>
+                <div className="px-3">
+                  <PaginationControls
+                    page={availableMemberPage}
+                    totalPages={Math.ceil(leadershipGroup.availableMembers.length / 10)}
+                    onPageChange={setAvailableMemberPage}
+                    label="Available members pages"
+                  />
+                </div>
               </details>
               {groupMemberError && <p role="alert" className="mt-2 text-sm text-red-700">{groupMemberError}</p>}
               {groupMemberMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{groupMemberMessage}</p>}
             </section>
           )}
-          {isKspLeader && (
+          {isLifeCoach && (
             <section className="mb-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
               <div className="mb-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">Leader tools</p>
@@ -2046,28 +2179,38 @@ export default function ChurchDashboardShell({
                 <>
                   <p className="mb-3 text-sm font-semibold text-slate-700">{smallGroup.group.name}</p>
                   {smallGroup.members.length ? (
-                    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-                      {smallGroup.members.map((member) => (
-                        <li key={member.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="font-semibold text-slate-800">{member.name}</p>
-                            <p className="text-xs text-slate-500">{getDesignations(member).join(', ') || 'Member'}</p>
-                          </div>
-                          {String(member.id) === String(user?._id) ? (
-                            <span className="text-xs text-slate-400">You</span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => requestSmallGroupMemberRemoval(member)}
-                              disabled={smallGroupMemberRemoving !== ''}
-                              className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                            >
-                              {smallGroupMemberRemoving === String(member.id) ? 'Removing…' : 'Remove from group'}
-                            </button>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
+                    <>
+                      <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+                        {smallGroup.members
+                          .slice((smallGroupMemberPage - 1) * 10, smallGroupMemberPage * 10)
+                          .map((member) => (
+                            <li key={member.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="font-semibold text-slate-800">{member.name}</p>
+                                <p className="text-xs text-slate-500">{getDesignations(member).join(', ') || 'Member'}</p>
+                              </div>
+                              {String(member.id) === String(user?._id) ? (
+                                <span className="text-xs text-slate-400">You</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => requestSmallGroupMemberRemoval(member)}
+                                  disabled={smallGroupMemberRemoving !== ''}
+                                  className="min-h-9 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                                >
+                                  {smallGroupMemberRemoving === String(member.id) ? 'Removing…' : 'Remove from group'}
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                      </ul>
+                      <PaginationControls
+                        page={smallGroupMemberPage}
+                        totalPages={Math.ceil(smallGroup.members.length / 10)}
+                        onPageChange={setSmallGroupMemberPage}
+                        label="Small group members pages"
+                      />
+                    </>
                   ) : (
                     <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">No active members are assigned to this group.</p>
                   )}
@@ -2076,7 +2219,7 @@ export default function ChurchDashboardShell({
               ) : null}
             </section>
           )}
-          {isKspLeader && (
+          {isLifeCoach && (
             <AttendanceMonitoringPanel
               getIdToken={getIdToken}
               apiBaseUrl={apiBaseUrl}
@@ -2192,6 +2335,7 @@ export default function ChurchDashboardShell({
                   Birthday
                   <input
                     type="date"
+                    required={firebaseUser?.providerData?.some((provider) => provider.providerId === 'google.com')}
                     value={profileDraft.birthDate}
                     onChange={(event) => setProfileDraft((draft) => ({ ...draft, birthDate: event.target.value }))}
                     className="mt-1 min-h-10 w-full rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-100"
@@ -2279,7 +2423,7 @@ export default function ChurchDashboardShell({
           </div>
         )}
 
-        <aside className="hidden flex-col space-y-4 border-l border-slate-200 bg-[#fbfbfe] px-2.5 py-5 xl:flex xl:px-4 dark:border-slate-700 dark:bg-slate-950">
+        <aside className="flex flex-col space-y-4 border-t border-slate-200 bg-[#fbfbfe] px-3 py-5 md:col-span-2 xl:col-span-1 xl:col-start-3 xl:border-l xl:border-t-0 xl:px-4 dark:border-slate-700 dark:bg-slate-950">
           <section className="rounded-2xl border border-slate-100 bg-white p-4 text-center shadow-sm">
             {photo ? (
               <img src={photo} alt="" className="mx-auto h-16 w-16 rounded-full object-cover ring-4 ring-violet-50" />
@@ -2346,6 +2490,37 @@ export default function ChurchDashboardShell({
             onToggleReaction={toggleVerseReaction}
           />
 
+          {isLifeCoach && (
+            <section className="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">LIFE COACH special events</h2>
+                  <p className="text-[10px] text-slate-400">Shared with all LIFE COACHES</p>
+                </div>
+                <Link
+                  to="/scanner/custom-events"
+                  className="rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100"
+                >
+                  Manage & scan
+                </Link>
+              </div>
+              {specialEvents.length ? (
+                <ul className="mt-3 divide-y divide-slate-100">
+                  {specialEvents.map((event) => (
+                    <li key={event._id} className="py-2 first:pt-0 last:pb-0">
+                      <p className="truncate text-xs font-semibold text-slate-800">{event.name}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        {event.category} · {new Date(event.createdAt).toLocaleDateString()}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-slate-500">No special events have been created yet.</p>
+              )}
+            </section>
+          )}
+
           <section id="birthday-celebrants" className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
               <div>
@@ -2372,7 +2547,7 @@ export default function ChurchDashboardShell({
                         ♥ {birthday.reactions?.length || 0}
                       </button>
                     </div>
-                    {(birthday.comments || []).slice(-1).map((comment) => (
+                    {(birthday.comments || []).map((comment) => (
                       <div key={comment._id} className="mt-2 flex items-start gap-2">
                         <p className="min-w-0 flex-1 text-[10px] text-slate-500 dark:text-slate-300">
                           <b>{comment.user?.displayName || 'Member'}:</b> {comment.body}
@@ -2408,6 +2583,14 @@ export default function ChurchDashboardShell({
               </div>
             ) : (
               <p className="text-xs leading-5 text-slate-500">No birthdays have been added for this month yet.</p>
+            )}
+            {birthdays.length > 0 && (
+              <PaginationControls
+                page={birthdayPage}
+                totalPages={birthdayTotalPages}
+                onPageChange={(page) => loadBirthdays(page).catch((error) => setActionError(getErrorMessage(error)))}
+                label="Birthday celebrant pages"
+              />
             )}
           </section>
 

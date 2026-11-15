@@ -5,6 +5,7 @@ const {
   authorizeRoles,
 } = require('../middleware/authMiddleware');
 const PublicEvent = require('../models/PublicEvent');
+const CustomEvent = require('../models/CustomEvent');
 const {
   getChurchAttendanceDate,
   parseChurchCalendarDate,
@@ -88,14 +89,35 @@ function readEventInput(body = {}) {
 
 router.get('/', async (req, res, next) => {
   try {
-    const events = await PublicEvent.find({
-      status: 'published',
-      eventDate: { $gte: getChurchAttendanceDate() },
-    })
-      .select('-createdBy -reminderLockUntil -reminderSentAt')
-      .sort({ eventDate: 1, startTime: 1 })
-      .limit(100)
-      .lean();
+    const [publicEvents, specialEvents] = await Promise.all([
+      PublicEvent.find({
+        status: 'published',
+        eventDate: { $gte: getChurchAttendanceDate() },
+      })
+        .select('-createdBy -reminderLockUntil -reminderSentAt')
+        .sort({ eventDate: 1, startTime: 1 })
+        .limit(100)
+        .lean(),
+      CustomEvent.find({ isActive: true })
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+    const events = [
+      ...publicEvents,
+      ...specialEvents.map((event) => ({
+        _id: `special-${event._id}`,
+        title: event.name,
+        description: event.category,
+        eventDate: getChurchAttendanceDate(event.createdAt),
+        startTime: '',
+        endTime: '',
+        location: '',
+        category: 'LIFE COACH Special Event',
+      })),
+    ].sort((first, second) =>
+      new Date(first.eventDate) - new Date(second.eventDate) ||
+      String(first.startTime || '').localeCompare(String(second.startTime || ''))
+    );
     return res.json({ events });
   } catch (error) {
     return next(error);
@@ -103,12 +125,21 @@ router.get('/', async (req, res, next) => {
 });
 
 router.get('/admin', ...adminOnly, async (req, res, next) => {
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 20;
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
   try {
-    const events = await PublicEvent.find({})
-      .sort({ eventDate: 1, startTime: 1, createdAt: -1 })
-      .limit(250)
-      .lean();
-    return res.json({ events });
+    const [events, total] = await Promise.all([
+      PublicEvent.find({})
+        .sort({ eventDate: 1, startTime: 1, createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      PublicEvent.countDocuments({}),
+    ]);
+    return res.json({ events, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     return next(error);
   }

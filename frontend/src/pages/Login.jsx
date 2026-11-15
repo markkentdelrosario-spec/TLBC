@@ -345,7 +345,8 @@ export default function Login() {
             key={LOCAL_WELCOME_SLIDES[visualIndex].id}
             src={LOCAL_WELCOME_SLIDES[visualIndex].src}
             alt=""
-            className="absolute inset-0 -z-20 h-full w-full animate-[welcome-slide-in_700ms_ease-in-out_both] object-cover"
+            decoding="async"
+            className="welcome-login-slide absolute inset-0 -z-20 h-full w-full object-cover"
           />
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-slate-950/45 via-slate-950/30 to-slate-950/90" />
           <Link

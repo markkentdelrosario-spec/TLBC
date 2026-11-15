@@ -9,8 +9,9 @@ export function getDesignations(userOrValue) {
       ? [value]
       : [];
   const legacyValues = {
-    'KSP leader': 'KSP Leader',
-    'Life Coach': 'KSP Leader',
+    'KSP Leader': 'LIFE COACH',
+    'KSP leader': 'LIFE COACH',
+    'Life Coach': 'LIFE COACH',
     'Music Team Leader': 'Worship Leader',
     'Tech Team Leader': 'Media Team Leader',
     'Creatives Leader': 'Media Team Leader',
@@ -29,6 +30,6 @@ export function hasDesignation(userOrValue, designation) {
 
 export function hasLeadershipDesignation(userOrValue) {
   return getDesignations(userOrValue).some((designation) =>
-    designation.endsWith('Leader')
+    designation.endsWith('Leader') || designation === 'LIFE COACH'
   );
 }

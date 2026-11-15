@@ -9,7 +9,7 @@ const {
 
 const SYSTEM_ROLES = new Set(['admin', 'pastor', 'member']);
 const LEGACY_MEMBER_ROLES = new Set(['life_coach', 'beneficiary']);
-const SCANNER_DESIGNATION = 'KSP Leader';
+const SCANNER_DESIGNATION = 'LIFE COACH';
 
 async function verifyFirebaseToken(req) {
   const authorization = req.get('authorization') || '';
@@ -87,8 +87,15 @@ async function authenticate(req, res, next) {
       user.role = 'member';
       await user.save();
     }
-    if (!Array.isArray(user.secondaryDesignations)) {
-      user.secondaryDesignations = getDesignations(user);
+    const normalizedDesignations = getDesignations(user);
+    if (
+      !Array.isArray(user.secondaryDesignations) ||
+      user.secondaryDesignations.length !== normalizedDesignations.length ||
+      user.secondaryDesignations.some(
+        (designation, index) => designation !== normalizedDesignations[index]
+      )
+    ) {
+      user.secondaryDesignations = normalizedDesignations;
       await user.save();
     }
     if (!SYSTEM_ROLES.has(user.role)) {
@@ -124,13 +131,25 @@ function authorizeRoles(...allowedRoles) {
   };
 }
 
-function authorizeKspLeader(req, res, next) {
+function authorizeLifeCoach(req, res, next) {
   if (req.user?.role === 'member' && hasDesignation(req.user, SCANNER_DESIGNATION)) {
     return next();
   }
   return res
     .status(403)
-    .json({ message: 'Only KSP Leaders can use this feature.' });
+    .json({ message: 'Only LIFE COACHES can use this feature.' });
+}
+
+function authorizeSmallGroupLeader(req, res, next) {
+  if (
+    req.user?.role === 'member' &&
+    hasDesignation(req.user, 'Small Group Leader')
+  ) {
+    return next();
+  }
+  return res.status(403).json({
+    message: 'Only Small Group Leaders can create a small group.',
+  });
 }
 
 function authorizeSecondaryDesignation(req, res, next) {
@@ -152,19 +171,20 @@ function authorizeReportAccess(req, res, next) {
 function authorizeAttendanceStatusManagement(req, res, next) {
   if (
     req.user?.role === 'admin' ||
-    (req.user?.role === 'member' && hasDesignation(req.user, 'KSP Leader'))
+    (req.user?.role === 'member' && hasDesignation(req.user, SCANNER_DESIGNATION))
   ) {
     return next();
   }
   return res.status(403).json({
-    message: 'Only KSP Leaders and admins can update attendance statuses.',
+    message: 'Only LIFE COACHES and admins can update attendance statuses.',
   });
 }
 
 module.exports = {
   authenticate,
   authorizeRoles,
-  authorizeKspLeader,
+  authorizeLifeCoach,
+  authorizeSmallGroupLeader,
   authorizeSecondaryDesignation,
   authorizeAttendanceStatusManagement,
   authorizeReportAccess,

@@ -2,25 +2,73 @@ const express = require('express');
 const mongoose = require('mongoose');
 const {
   authenticate,
-  authorizeKspLeader,
+  authorizeLifeCoach,
 } = require('../middleware/authMiddleware');
 const Beneficiary = require('../models/Beneficiary');
 const CustomEvent = require('../models/CustomEvent');
 const CustomEventAttendanceScan = require('../models/CustomEventAttendanceScan');
 const User = require('../models/User');
+const { emitToAll } = require('../realtime/realtime');
 
 const router = express.Router();
 const eventCategories = new Set(['KSP Gathering', 'Seminars', 'Other']);
 
-router.use(authenticate, authorizeKspLeader);
+router.use(authenticate, authorizeLifeCoach);
 
 router.get('/', async (req, res, next) => {
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 20;
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
   try {
-    const events = await CustomEvent.find({ isActive: true })
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .lean();
-    return res.json({ events });
+    const filter = { isActive: true };
+    const [events, total] = await Promise.all([
+      CustomEvent.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      CustomEvent.countDocuments(filter),
+    ]);
+    return res.json({ events, page, limit, total, totalPages: Math.ceil(total / limit) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get('/:eventId/attendees', async (req, res, next) => {
+  const { eventId } = req.params;
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 20;
+  if (!mongoose.isValidObjectId(eventId)) {
+    return res.status(400).json({ message: 'eventId must be a valid ID.' });
+  }
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
+  try {
+    const event = await CustomEvent.findOne({ _id: eventId, isActive: true }).lean();
+    if (!event) return res.status(404).json({ message: 'Custom event not found.' });
+    const filter = { event: event._id };
+    const [attendees, total] = await Promise.all([
+      CustomEventAttendanceScan.find(filter)
+        .sort({ scannedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('user', 'displayName email')
+        .populate('scannedBy', 'displayName')
+        .lean(),
+      CustomEventAttendanceScan.countDocuments(filter),
+    ]);
+    return res.json({
+      event,
+      attendees,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     return next(error);
   }
@@ -48,6 +96,12 @@ router.post('/', async (req, res, next) => {
       category,
       name: category === 'Other' ? customName : category,
       createdBy: req.user._id,
+    });
+    emitToAll('special-event:created', {
+      id: String(event._id),
+      name: event.name,
+      category: event.category,
+      createdAt: event.createdAt,
     });
     return res.status(201).json({ event });
   } catch (error) {
@@ -78,7 +132,6 @@ router.post('/:eventId/scans', async (req, res, next) => {
     if (mongoose.isObjectIdOrHexString(qrToken)) {
       user = await User.findOne({
         _id: qrToken,
-        role: 'member',
         isActive: true,
       }).select('_id displayName');
       if (user) {
@@ -95,14 +148,13 @@ router.post('/:eventId/scans', async (req, res, next) => {
       if (beneficiary) {
         user = await User.findOne({
           _id: beneficiary.user,
-          role: 'member',
           isActive: true,
         }).select('_id displayName');
       }
     }
 
     if (!user) {
-      return res.status(404).json({ message: 'Active member not found for this QR code.' });
+      return res.status(404).json({ message: 'Active user not found for this QR code.' });
     }
 
     const scan = await CustomEventAttendanceScan.create({
@@ -111,6 +163,7 @@ router.post('/:eventId/scans', async (req, res, next) => {
       beneficiary: beneficiary?._id,
       scannedBy: req.user._id,
     });
+    emitToAll('special-event:scan', { eventId: String(event._id) });
     return res.status(201).json({
       message: `Attendance recorded for ${user.displayName}.`,
       event: { id: event._id, name: event.name },

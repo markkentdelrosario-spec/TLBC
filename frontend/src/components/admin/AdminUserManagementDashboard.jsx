@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import ChurchDashboardShell from '../layout/ChurchDashboardShell';
@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import ConfirmationModal from '../shared/ConfirmationModal';
 import AdminPublicEvents from './AdminPublicEvents';
 import AdminChurchMinistries from './AdminChurchMinistries';
+import PaginationControls from '../shared/PaginationControls';
 
 const ROLES = [
   { value: 'admin', label: 'Admin' },
@@ -16,7 +17,7 @@ const ROLES = [
   { value: 'member', label: 'Member' },
 ];
 const SECONDARY_DESIGNATIONS = [
-  'KSP Leader',
+  'LIFE COACH',
   'Youth Leader',
   'Worship Leader',
   'Small Group Leader',
@@ -51,6 +52,18 @@ export default function AdminUserManagementDashboard({
   const [users, setUsers] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [userPage, setUserPage] = useState(1);
+  const [userPagination, setUserPagination] = useState({ total: 0, totalPages: 1 });
+  const [userCounts, setUserCounts] = useState({ active: 0, deactivated: 0, pending: 0 });
+  const [createAccountOpen, setCreateAccountOpen] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [newAccount, setNewAccount] = useState({
+    displayName: '',
+    email: '',
+    phoneNumber: '',
+    birthDate: '',
+  });
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
   const [designationMenuUserId, setDesignationMenuUserId] = useState('');
@@ -63,10 +76,21 @@ export default function AdminUserManagementDashboard({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const userResult = await apiRequest('/admin/users', { getIdToken, apiBaseUrl });
+      const params = new URLSearchParams({
+        page: String(userPage),
+        limit: '20',
+        status: userTab,
+      });
+      if (searchTerm) params.set('search', searchTerm);
+      const userResult = await apiRequest(`/admin/users?${params}`, { getIdToken, apiBaseUrl });
       const nextUsers = Array.isArray(userResult)
         ? userResult
         : userResult.users || [];
+      setUserPagination({
+        total: userResult.total || 0,
+        totalPages: userResult.totalPages || 1,
+      });
+      setUserCounts(userResult.counts || { active: 0, deactivated: 0, pending: 0 });
       setUsers(nextUsers);
       setDrafts(
         Object.fromEntries(
@@ -87,31 +111,48 @@ export default function AdminUserManagementDashboard({
     } finally {
       setLoading(false);
     }
-  }, [apiBaseUrl, getIdToken, showToast]);
+  }, [apiBaseUrl, getIdToken, searchTerm, showToast, userPage, userTab]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearchTerm(search.trim());
+      setUserPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
     window.addEventListener('tlbc:profile-updated', loadData);
     return () => window.removeEventListener('tlbc:profile-updated', loadData);
   }, [loadData]);
 
-  const visibleUsers = useMemo(() => {
-    const usersForTab = users.filter((user) => {
-      if (userTab === 'pending') return !user.isVerified;
-      if (userTab === 'deactivated') return user.isVerified && !user.isActive;
-      return user.isVerified && user.isActive;
-    });
-    const term = search.trim().toLowerCase();
-    if (!term) return usersForTab;
-    return usersForTab.filter((user) =>
-      [user.displayName, user.email, user.phoneNumber]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(term))
-    );
-  }, [search, userTab, users]);
+  const visibleUsers = users;
+
+  async function createAccount(event) {
+    event.preventDefault();
+    setCreatingAccount(true);
+    try {
+      const result = await apiRequest('/admin/users', {
+        getIdToken,
+        apiBaseUrl,
+        method: 'POST',
+        body: JSON.stringify(newAccount),
+      });
+      showToast(result.message, 'success');
+      setNewAccount({ displayName: '', email: '', phoneNumber: '', birthDate: '' });
+      setCreateAccountOpen(false);
+      setUserTab('pending');
+      setUserPage(1);
+    } catch (createError) {
+      showToast(getErrorMessage(createError), 'error');
+    } finally {
+      setCreatingAccount(false);
+    }
+  }
 
   function updateDraft(userId, key, value) {
     setDrafts((current) => ({
@@ -254,6 +295,13 @@ export default function AdminUserManagementDashboard({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-800"
+              onClick={() => setCreateAccountOpen((open) => !open)}
+            >
+              {createAccountOpen ? 'Cancel new account' : 'Create account'}
+            </button>
             <a href="#public-events-management" className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-slate-800">
               Manage events
             </a>
@@ -266,12 +314,67 @@ export default function AdminUserManagementDashboard({
           </div>
         </header>
 
+        {createAccountOpen && (
+          <section className="mb-5 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900 dark:bg-slate-900 sm:p-6">
+            <h2 className="text-lg font-bold">Invite a new member</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              A verification code will be emailed. The member completes registration and chooses their password.
+            </p>
+            <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={createAccount}>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Full name
+                <input
+                  required
+                  maxLength={120}
+                  className={inputClass}
+                  value={newAccount.displayName}
+                  onChange={(event) => setNewAccount((draft) => ({ ...draft, displayName: event.target.value }))}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Gmail address
+                <input
+                  required
+                  type="email"
+                  pattern="^[^\\s@]+@gmail\\.com$"
+                  className={inputClass}
+                  value={newAccount.email}
+                  onChange={(event) => setNewAccount((draft) => ({ ...draft, email: event.target.value }))}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Phone number
+                <input
+                  type="tel"
+                  maxLength={32}
+                  className={inputClass}
+                  value={newAccount.phoneNumber}
+                  onChange={(event) => setNewAccount((draft) => ({ ...draft, phoneNumber: event.target.value }))}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                Birthday
+                <input
+                  required
+                  type="date"
+                  className={inputClass}
+                  value={newAccount.birthDate}
+                  onChange={(event) => setNewAccount((draft) => ({ ...draft, birthDate: event.target.value }))}
+                />
+              </label>
+              <button type="submit" className={`${buttonClass} sm:col-span-2`} disabled={creatingAccount}>
+                {creatingAccount ? 'Sending invitation…' : 'Send verification code'}
+              </button>
+            </form>
+          </section>
+        )}
+
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-col gap-3 border-b border-slate-200 p-4 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div>
               <h2 className="text-lg font-bold">Registered accounts</h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {users.length} account{users.length === 1 ? '' : 's'}
+                {userPagination.total} account{userPagination.total === 1 ? '' : 's'}
               </p>
             </div>
             <label className="w-full sm:max-w-xs">
@@ -279,6 +382,7 @@ export default function AdminUserManagementDashboard({
               <input
                 className={inputClass}
                 value={search}
+                maxLength={100}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search name, email, or phone"
               />
@@ -291,15 +395,15 @@ export default function AdminUserManagementDashboard({
             aria-label="Filter users by account status"
           >
             {[
-              { id: 'active', label: 'Active Users', count: users.filter((user) => user.isVerified && user.isActive).length },
-              { id: 'deactivated', label: 'Deactivated Users', count: users.filter((user) => user.isVerified && !user.isActive).length },
-              { id: 'pending', label: 'Pending Verification', count: users.filter((user) => !user.isVerified).length },
+              { id: 'active', label: 'Active Users', count: userCounts.active },
+              { id: 'deactivated', label: 'Deactivated Users', count: userCounts.deactivated },
+              { id: 'pending', label: 'Pending Verification', count: userCounts.pending },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 aria-pressed={userTab === tab.id}
-                onClick={() => setUserTab(tab.id)}
+                onClick={() => { setUserTab(tab.id); setUserPage(1); }}
                 className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold transition ${
                   userTab === tab.id
                     ? 'bg-emerald-700 text-white'
@@ -484,6 +588,14 @@ export default function AdminUserManagementDashboard({
               })}
             </div>
           )}
+          <div className="px-4 sm:px-6">
+            <PaginationControls
+              page={userPage}
+              totalPages={userPagination.totalPages}
+              onPageChange={setUserPage}
+              label="Account pages"
+            />
+          </div>
         </section>
         <div className="mb-3 mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

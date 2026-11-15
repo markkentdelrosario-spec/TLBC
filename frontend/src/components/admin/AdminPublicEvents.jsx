@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import PaginationControls from '../shared/PaginationControls';
 
 const categories = ['Church', 'Worship', 'Youth', 'Small Groups', 'Outreach', 'Other'];
 const inputClass = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-emerald-900';
@@ -35,17 +36,23 @@ function formatEventDate(value) {
 export default function AdminPublicEvents({ getIdToken, apiBaseUrl = '/api' }) {
   const { showToast } = useToast();
   const [events, setEvents] = useState([]);
+  const [eventPage, setEventPage] = useState(1);
+  const [eventTotalPages, setEventTotalPages] = useState(1);
+  const [eventTotal, setEventTotal] = useState(0);
   const [form, setForm] = useState(emptyEvent);
   const [editingId, setEditingId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [archivingId, setArchivingId] = useState('');
 
-  const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async (page = 1) => {
     setLoading(true);
     try {
-      const result = await apiRequest('/events/admin', { getIdToken, apiBaseUrl });
+      const result = await apiRequest(`/events/admin?page=${page}&limit=10`, { getIdToken, apiBaseUrl });
       setEvents(Array.isArray(result.events) ? result.events : []);
+      setEventPage(result.page || page);
+      setEventTotalPages(result.totalPages || 1);
+      setEventTotal(result.total || 0);
     } catch (error) {
       showToast(getErrorMessage(error), 'error');
     } finally {
@@ -195,7 +202,7 @@ export default function AdminPublicEvents({ getIdToken, apiBaseUrl = '/api' }) {
       <div className="mt-6">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="font-bold text-slate-900 dark:text-slate-100">Managed events</h3>
-          <span className="text-xs text-slate-500 dark:text-slate-400">{events.length} event{events.length === 1 ? '' : 's'}</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">{eventTotal} event{eventTotal === 1 ? '' : 's'}</span>
         </div>
         {loading ? (
           <p role="status" className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500 dark:bg-slate-800">Loading events…</p>
@@ -242,6 +249,14 @@ export default function AdminPublicEvents({ getIdToken, apiBaseUrl = '/api' }) {
               </article>
             ))}
           </div>
+        )}
+        {!loading && events.length > 0 && (
+          <PaginationControls
+            page={eventPage}
+            totalPages={eventTotalPages}
+            onPageChange={(page) => loadEvents(page)}
+            label="Managed event pages"
+          />
         )}
       </div>
     </section>

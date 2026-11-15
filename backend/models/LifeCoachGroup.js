@@ -5,10 +5,11 @@ const lifeCoachGroupSchema = new mongoose.Schema(
     groupNumber: {
       type: Number,
       required: true,
-      enum: [1, 2, 3],
+      min: 1,
       unique: true,
     },
     name: { type: String, required: true, trim: true, maxlength: 100 },
+    leader: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

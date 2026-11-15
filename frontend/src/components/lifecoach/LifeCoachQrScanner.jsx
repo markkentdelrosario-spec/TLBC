@@ -3,6 +3,7 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Link } from 'react-router-dom';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
+import PaginationControls from '../shared/PaginationControls';
 
 const buttonClass =
   'inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-700 px-5 py-3 text-base font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50';
@@ -57,10 +58,13 @@ export default function LifeCoachQrScanner({
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotalPages, setSearchTotalPages] = useState(1);
   const [searching, setSearching] = useState(false);
   const [checkingInId, setCheckingInId] = useState('');
   const [groupSummary, setGroupSummary] = useState(null);
   const [groupSummaryLoading, setGroupSummaryLoading] = useState(true);
+  const [groupSummaryPage, setGroupSummaryPage] = useState(1);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -115,7 +119,7 @@ export default function LifeCoachQrScanner({
     }
   }
 
-  async function recordAttendance({ qrToken, beneficiaryId, methodKey }) {
+  async function recordAttendance({ qrToken, userId, methodKey }) {
     if (!isChurchSunday()) {
       setError('Attendance can only be recorded on Sunday (Philippine Time).');
       return;
@@ -132,7 +136,7 @@ export default function LifeCoachQrScanner({
         apiBaseUrl,
         method: 'POST',
         body: JSON.stringify({
-          ...(qrToken ? { qrToken } : { beneficiaryId }),
+          ...(qrToken ? { qrToken } : { userId }),
           serviceName,
         }),
       });
@@ -191,9 +195,7 @@ export default function LifeCoachQrScanner({
     }
   }
 
-  async function searchBeneficiaries(event) {
-    event.preventDefault();
-    const searchTerm = query.trim();
+  async function loadSearchResults(searchTerm, page = 1) {
     if (searchTerm.length < 2) {
       setError('Enter at least 2 characters to search.');
       return;
@@ -204,12 +206,14 @@ export default function LifeCoachQrScanner({
     setStatus('');
     try {
       const response = await apiRequest(
-        `/attendance/search?query=${encodeURIComponent(searchTerm)}`,
+        `/attendance/search?query=${encodeURIComponent(searchTerm)}&page=${page}&limit=10`,
         { getIdToken, apiBaseUrl }
       );
-      setResults(response.beneficiaries || []);
-      if (!response.beneficiaries?.length) {
-        setStatus('No matching beneficiary found in your assigned group.');
+      setResults(response.users || []);
+      setSearchPage(response.page || page);
+      setSearchTotalPages(response.totalPages || 1);
+      if (!response.users?.length) {
+        setStatus('No matching active user was found.');
       }
     } catch (searchError) {
       setError(getErrorMessage(searchError));
@@ -218,12 +222,17 @@ export default function LifeCoachQrScanner({
     }
   }
 
+  async function searchBeneficiaries(event) {
+    event.preventDefault();
+    await loadSearchResults(query.trim(), 1);
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-            The Life Builder Church · KSP Leader QR Scanner
+            The Life Builder Church · LIFE COACH QR Scanner
           </p>
           <div className="mt-2 flex items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Record attendance</h1>
@@ -290,7 +299,7 @@ export default function LifeCoachQrScanner({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {groupSummary.members.map((member) => (
+                  {groupSummary.members.slice((groupSummaryPage - 1) * 10, groupSummaryPage * 10).map((member) => (
                     <tr key={member.userId}>
                       <th scope="row" className="px-3 py-3 font-medium">{member.name}</th>
                       <td className="px-3 py-3">
@@ -314,6 +323,14 @@ export default function LifeCoachQrScanner({
                   ))}
                 </tbody>
               </table>
+              <div className="px-3">
+                <PaginationControls
+                  page={groupSummaryPage}
+                  totalPages={Math.ceil(groupSummary.members.length / 10)}
+                  onPageChange={setGroupSummaryPage}
+                  label="Sunday attendance roster pages"
+                />
+              </div>
             </div>
           )}
         </section>
@@ -354,14 +371,14 @@ export default function LifeCoachQrScanner({
 
         <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div>
-            <h2 className="text-lg font-bold">Find a beneficiary manually</h2>
+            <h2 className="text-lg font-bold">            Find a user manually</h2>
             <p className="mt-1 text-sm leading-5 text-slate-500">
-              Search by name, email, or phone number.
+              Search any active user by name, email, or phone number.
             </p>
           </div>
           <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={searchBeneficiaries}>
             <label className="min-w-0 flex-1">
-              <span className="sr-only">Beneficiary name, email, or phone</span>
+              <span className="sr-only">User name, email, or phone</span>
               <input
                 className={inputClass}
                 value={query}
@@ -378,27 +395,26 @@ export default function LifeCoachQrScanner({
 
           {results.length > 0 && (
             <ul className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-200">
-              {results.map((beneficiary) => {
-                const person = beneficiary.user || {};
-                const id = beneficiary._id || beneficiary.id;
+              {results.map((person) => {
+                const id = person._id;
                 return (
                   <li
                     className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
                     key={id}
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-semibold">{person.displayName || 'Beneficiary'}</p>
+                      <p className="truncate font-semibold">{person.displayName || 'User'}</p>
                       <p className="mt-1 truncate text-sm text-slate-500">
                         {[person.phoneNumber, person.email]
                           .filter(Boolean)
-                          .join(' · ') || beneficiary.group?.name}
+                          .join(' · ') || person.group?.name}
                       </p>
                     </div>
                     <button
                       className={`${buttonClass} w-full sm:w-auto`}
                       disabled={!isSunday || checkingInId !== ''}
                       onClick={() =>
-                        recordAttendance({ beneficiaryId: id, methodKey: id })
+                        recordAttendance({ userId: id, methodKey: id })
                       }
                     >
                       {checkingInId === id
@@ -409,6 +425,14 @@ export default function LifeCoachQrScanner({
                 );
               })}
             </ul>
+          )}
+          {results.length > 0 && (
+            <PaginationControls
+              page={searchPage}
+              totalPages={searchTotalPages}
+              onPageChange={(page) => loadSearchResults(query.trim(), page)}
+              label="User search results pages"
+            />
           )}
         </section>
         <p className="mt-4 text-center text-xs leading-5 text-slate-500">

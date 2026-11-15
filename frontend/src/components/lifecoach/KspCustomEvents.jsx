@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Link } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { apiRequest, getErrorMessage } from '../../services/api';
+import PaginationControls from '../shared/PaginationControls';
 
 const eventCategories = ['KSP Gathering', 'Seminars', 'Other'];
 const inputClass =
@@ -13,8 +15,16 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
   const scannerElementId = `ksp-event-qr-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const scannerRef = useRef(null);
   const busyRef = useRef(false);
+  const selectedEventIdRef = useRef(selectedEventId);
   const [events, setEvents] = useState([]);
+  const [eventPage, setEventPage] = useState(1);
+  const [eventTotalPages, setEventTotalPages] = useState(1);
   const [selectedEventId, setSelectedEventId] = useState('');
+  const [attendees, setAttendees] = useState([]);
+  const [attendeePage, setAttendeePage] = useState(1);
+  const [attendeeTotalPages, setAttendeeTotalPages] = useState(1);
+  const [attendeeTotal, setAttendeeTotal] = useState(0);
+  const [attendeesLoading, setAttendeesLoading] = useState(false);
   const [category, setCategory] = useState(eventCategories[0]);
   const [customName, setCustomName] = useState('');
   const [loading, setLoading] = useState(true);
@@ -23,14 +33,43 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
 
-  const loadEvents = useCallback(async () => {
-    const result = await apiRequest('/custom-events', { getIdToken, apiBaseUrl });
+  useEffect(() => {
+    selectedEventIdRef.current = selectedEventId;
+  }, [selectedEventId]);
+
+  const loadEvents = useCallback(async (page = 1) => {
+    const result = await apiRequest(`/custom-events?page=${page}&limit=10`, { getIdToken, apiBaseUrl });
     setEvents(result.events || []);
+    setEventPage(result.page || page);
+    setEventTotalPages(result.totalPages || 1);
     setSelectedEventId((current) =>
       current && result.events?.some((event) => event._id === current)
         ? current
         : result.events?.[0]?._id || ''
     );
+  }, [apiBaseUrl, getIdToken]);
+
+  const loadAttendees = useCallback(async (eventId, page = 1) => {
+    if (!eventId) {
+      setAttendees([]);
+      setAttendeeTotal(0);
+      setAttendeePage(1);
+      setAttendeeTotalPages(1);
+      return;
+    }
+    setAttendeesLoading(true);
+    try {
+      const result = await apiRequest(
+        `/custom-events/${encodeURIComponent(eventId)}/attendees?page=${page}&limit=10`,
+        { getIdToken, apiBaseUrl }
+      );
+      setAttendees(result.attendees || []);
+      setAttendeeTotal(result.total || 0);
+      setAttendeePage(result.page || page);
+      setAttendeeTotalPages(result.totalPages || 1);
+    } finally {
+      setAttendeesLoading(false);
+    }
   }, [apiBaseUrl, getIdToken]);
 
   useEffect(() => {
@@ -53,6 +92,49 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
     };
   }, [loadEvents]);
 
+  useEffect(() => {
+    loadAttendees(selectedEventId, attendeePage).catch((loadError) => {
+      setError(getErrorMessage(loadError));
+    });
+  }, [attendeePage, loadAttendees, selectedEventId]);
+
+  useEffect(() => {
+    let active = true;
+    let socket;
+    getIdToken()
+      .then((token) => {
+        if (!active) return;
+        const configuredUrl = import.meta.env.VITE_SOCKET_URL;
+        const socketUrl = configuredUrl
+          ? configuredUrl
+          : apiBaseUrl.startsWith('http')
+            ? new URL(apiBaseUrl).origin
+            : window.location.origin;
+        socket = io(socketUrl, {
+          auth: { token },
+          transports: ['websocket', 'polling'],
+        });
+        socket.on('special-event:created', () => {
+          loadEvents(1).catch((loadError) => setError(getErrorMessage(loadError)));
+        });
+        socket.on('special-event:scan', ({ eventId }) => {
+          if (selectedEventIdRef.current !== eventId) return;
+          setAttendeePage(1);
+          loadAttendees(eventId, 1).catch((loadError) => setError(getErrorMessage(loadError)));
+        });
+        socket.on('connect_error', (connectError) => {
+          console.error('Unable to receive live special-event updates.', connectError.message);
+        });
+      })
+      .catch((tokenError) => {
+        if (active) console.error('Unable to authenticate special-event updates.', tokenError);
+      });
+    return () => {
+      active = false;
+      socket?.disconnect();
+    };
+  }, [apiBaseUrl, getIdToken, loadAttendees, loadEvents]);
+
   async function stopScanner() {
     const scanner = scannerRef.current;
     if (scanner?.isScanning) await scanner.stop();
@@ -74,7 +156,7 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
           ...(category === 'Other' ? { customName } : {}),
         }),
       });
-      await loadEvents();
+      await loadEvents(1);
       setSelectedEventId(result.event._id);
       setCustomName('');
       setStatus(`${result.event.name} is ready for QR attendance scans.`);
@@ -102,6 +184,8 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
         }
       );
       setStatus(`${result.message} · ${result.event.name}`);
+      setAttendeePage(1);
+      await loadAttendees(selectedEventId, 1);
     } catch (scanError) {
       setError(getErrorMessage(scanError));
     } finally {
@@ -149,7 +233,7 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
       <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-            The Life Builder Church · KSP Leader
+            The Life Builder Church · LIFE COACH
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Custom event attendance</h1>
@@ -161,7 +245,7 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
             </Link>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Create a KSP gathering or seminar, then scan member QR IDs. These scans are stored separately from Sunday attendance.
+            Create a LIFE COACH gathering or seminar, then scan member QR IDs. These scans are stored separately from Sunday attendance.
           </p>
         </header>
 
@@ -235,7 +319,7 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
         </section>
 
         <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <h2 className="text-lg font-bold">Recent events</h2>
+          <h2 className="text-lg font-bold">Special events</h2>
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading events…</p>
           ) : events.length ? (
@@ -259,7 +343,45 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
           ) : (
             <p className="mt-3 text-sm text-slate-500">Create an event to enable event attendance scanning.</p>
           )}
+          <PaginationControls
+            page={eventPage}
+            totalPages={eventTotalPages}
+            onPageChange={(page) => loadEvents(page).catch((loadError) => setError(getErrorMessage(loadError)))}
+            label="Special event pages"
+          />
         </section>
+
+        {selectedEvent && (
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-lg font-bold">{selectedEvent.name} attendees</h2>
+              <p className="text-sm text-slate-500">{attendeeTotal} checked in</p>
+            </div>
+            {attendeesLoading ? (
+              <p role="status" className="mt-3 text-sm text-slate-500">Loading attendees…</p>
+            ) : attendees.length ? (
+              <ul className="mt-3 divide-y divide-slate-100">
+                {attendees.map((attendee) => (
+                  <li key={attendee._id} className="flex flex-wrap justify-between gap-2 py-3">
+                    <span className="font-semibold text-slate-800">{attendee.user?.displayName || 'Former member'}</span>
+                    <span className="text-xs text-slate-500">
+                      {new Date(attendee.scannedAt).toLocaleString()}
+                      {attendee.scannedBy?.displayName ? ` · scanned by ${attendee.scannedBy.displayName}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">No attendees have been scanned for this event yet.</p>
+            )}
+            <PaginationControls
+              page={attendeePage}
+              totalPages={attendeeTotalPages}
+              onPageChange={setAttendeePage}
+              label="Attendee pages"
+            />
+        </section>
+        )}
       </div>
     </main>
   );

@@ -38,7 +38,7 @@ export default function App() {
             <Route path="/events" element={<PublicEventsPage />} />
             <Route path="/ministries" element={<PublicMinistriesPage />} />
             <Route path="/login" element={<Login />} />
-            <Route element={<ProtectedRoute allowedRoles={['member']} requiredDesignation="KSP Leader" />}>
+            <Route element={<ProtectedRoute allowedRoles={['member']} requiredDesignation="LIFE COACH" />}>
               <Route
                 path="/scanner"
                 element={

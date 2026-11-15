@@ -1,5 +1,5 @@
 const SECONDARY_DESIGNATIONS = [
-  'KSP Leader',
+  'LIFE COACH',
   'Youth Leader',
   'Worship Leader',
   'Small Group Leader',
@@ -11,8 +11,9 @@ const SECONDARY_DESIGNATIONS = [
 ];
 
 const LEGACY_DESIGNATION_MAP = new Map([
-  ['KSP leader', 'KSP Leader'],
-  ['Life Coach', 'KSP Leader'],
+  ['KSP Leader', 'LIFE COACH'],
+  ['KSP leader', 'LIFE COACH'],
+  ['Life Coach', 'LIFE COACH'],
   ['Music Team Leader', 'Worship Leader'],
   ['Tech Team Leader', 'Media Team Leader'],
   ['Creatives Leader', 'Media Team Leader'],
@@ -42,10 +43,13 @@ function hasDesignation(user, designation) {
 }
 
 function hasLeadershipDesignation(user) {
-  return getDesignations(user).some((designation) => designation.endsWith('Leader'));
+  return getDesignations(user).some(
+    (designation) => designation.endsWith('Leader') || designation === 'LIFE COACH'
+  );
 }
 
 function getDesignationTeamName(designation) {
+  if (designation === 'LIFE COACH') return 'KSP';
   const name = designation.replace(/ (?:Leader|Member)$/, '');
   return name === 'Worship' ? 'Worship Team' : name;
 }

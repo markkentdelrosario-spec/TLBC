@@ -85,7 +85,7 @@ router.get('/summary', ...reportAccess, async (req, res, next) => {
 
   try {
     const savedGroups = await LifeCoachGroup.aggregate([
-      { $match: { groupNumber: { $in: [1, 2, 3] } } },
+      { $match: { isActive: true } },
       {
         $lookup: {
           from: AttendanceLog.collection.name,
@@ -105,23 +105,13 @@ router.get('/summary', ...reportAccess, async (req, res, next) => {
       },
       { $sort: { groupNumber: 1 } },
     ]);
-    const groupsByNumber = new Map(
-      savedGroups.map((group) => [group.groupNumber, group])
-    );
     const unassignedQuery = {
       $or: [{ group: { $exists: false } }, { group: null }],
       status: { $ne: 'absent' },
     };
     if (dateMatch) unassignedQuery.attendanceDate = dateMatch;
     const unassignedAttendance = await AttendanceLog.countDocuments(unassignedQuery);
-    const groups = [1, 2, 3].map(
-      (groupNumber) =>
-        groupsByNumber.get(groupNumber) || {
-          groupNumber,
-          name: `Group ${groupNumber}`,
-          attendanceCount: 0,
-        }
-    );
+    const groups = savedGroups;
 
     return res.json({
       totalAttendance: groups.reduce(
@@ -153,7 +143,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
 
   try {
     const [groups, logs] = await Promise.all([
-      LifeCoachGroup.find({ groupNumber: { $in: [1, 2, 3] } })
+      LifeCoachGroup.find({ isActive: true })
         .select('groupNumber name')
         .sort({ groupNumber: 1 })
         .lean(),
@@ -191,7 +181,7 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
     for (const log of logs) {
       const groupNumber = log.group?.groupNumber;
       const attendeeUser = log.user || log.beneficiary?.user;
-      if (![1, 2, 3].includes(groupNumber)) {
+      if (!Number.isInteger(groupNumber)) {
         unassignedAttendees.push({
           beneficiaryName: attendeeUser?.displayName || 'Unknown member',
           designation: getDesignations(attendeeUser).join(', ') || 'Member',
@@ -226,14 +216,8 @@ router.get('/sunday-report', ...reportAccess, async (req, res, next) => {
       });
     }
 
-    const reportGroups = [1, 2, 3].map(
-      (groupNumber) =>
-        groupsByNumber.get(groupNumber) || {
-          groupNumber,
-          name: `Group ${groupNumber}`,
-          attendanceCount: 0,
-          attendees: [],
-        }
+    const reportGroups = [...groupsByNumber.values()].sort(
+      (first, second) => first.groupNumber - second.groupNumber
     );
     return res.json({
       date: req.query.date,
@@ -324,6 +308,11 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
 });
 
 router.get('/leaderboard', ...leaderboardAccess, async (req, res, next) => {
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 20;
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
   try {
     const leaderboardState = await LeaderboardState.findById('attendance')
       .select('resetAt')
@@ -382,19 +371,24 @@ router.get('/leaderboard', ...leaderboardAccess, async (req, res, next) => {
     })
       .select('_id displayName')
       .lean();
-    return res.json({
-      members: [
-        ...members,
-        ...zeroAttendanceMembers.map((member) => ({
-          memberId: member._id,
-          memberName: member.displayName,
-          presentCount: 0,
-        })),
-      ].sort(
+    const allMembers = [
+      ...members,
+      ...zeroAttendanceMembers.map((member) => ({
+        memberId: member._id,
+        memberName: member.displayName,
+        presentCount: 0,
+      })),
+    ].sort(
         (left, right) =>
           right.presentCount - left.presentCount ||
           left.memberName.localeCompare(right.memberName)
-      ),
+      );
+    return res.json({
+      members: allMembers.slice((page - 1) * limit, page * limit),
+      page,
+      limit,
+      total: allMembers.length,
+      totalPages: Math.ceil(allMembers.length / limit),
     });
   } catch (error) {
     return next(error);

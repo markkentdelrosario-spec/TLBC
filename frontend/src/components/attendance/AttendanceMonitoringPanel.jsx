@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { getDesignations } from '../../utils/designations';
+import PaginationControls from '../shared/PaginationControls';
 
 const statusStyles = {
   present: 'attendance-status-present bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
@@ -28,6 +29,7 @@ export default function AttendanceMonitoringPanel({
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
   const [error, setError] = useState('');
+  const [memberPage, setMemberPage] = useState(1);
 
   const loadSummary = useCallback(async () => {
     setLoading(true);
@@ -87,6 +89,9 @@ export default function AttendanceMonitoringPanel({
   }
 
   const members = summary?.members || [];
+  const pageSize = 10;
+  const totalPages = Math.ceil(members.length / pageSize);
+  const visibleMembers = members.slice((memberPage - 1) * pageSize, memberPage * pageSize);
 
   return (
     <section
@@ -95,7 +100,7 @@ export default function AttendanceMonitoringPanel({
     >
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">KSP Leader tools</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">LIFE COACH tools</p>
           <h2 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">Attendance monitoring</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
             {summary?.group?.name || 'Your assigned group'} · {summary?.date || 'Today'}
@@ -144,7 +149,7 @@ export default function AttendanceMonitoringPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {members.map((member) => (
+              {visibleMembers.map((member) => (
                 <tr key={member.userId}>
                   <th scope="row" className="px-3 py-3 font-semibold text-slate-800 dark:text-slate-100">
                     <span className="block max-w-[14rem] truncate">{member.name}</span>
@@ -188,6 +193,14 @@ export default function AttendanceMonitoringPanel({
               ))}
             </tbody>
           </table>
+          <div className="px-3">
+            <PaginationControls
+              page={memberPage}
+              totalPages={totalPages}
+              onPageChange={setMemberPage}
+              label="Attendance roster pages"
+            />
+          </div>
         </div>
       )}
     </section>

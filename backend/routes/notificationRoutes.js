@@ -8,16 +8,31 @@ const { emitToUser } = require('../realtime/realtime');
 const router = express.Router();
 
 router.get('/', authenticate, async (req, res, next) => {
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || 10;
+  if (page < 1 || limit < 1 || limit > 100) {
+    return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
+  }
   try {
-    const [notifications, unreadCount] = await Promise.all([
-      Notification.find({ user: req.user._id })
+    const filter = { user: req.user._id };
+    const [notifications, unreadCount, total] = await Promise.all([
+      Notification.find(filter)
         .sort({ createdAt: -1 })
-        .limit(50)
+        .skip((page - 1) * limit)
+        .limit(limit)
         .populate('actor', 'displayName')
         .lean(),
-      Notification.countDocuments({ user: req.user._id, readAt: null }),
+      Notification.countDocuments({ ...filter, readAt: null }),
+      Notification.countDocuments(filter),
     ]);
-    return res.json({ notifications, unreadCount });
+    return res.json({
+      notifications,
+      unreadCount,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     return next(error);
   }
