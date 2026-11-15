@@ -99,6 +99,22 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
   }, [attendeePage, loadAttendees, selectedEventId]);
 
   useEffect(() => {
+    const refreshEvents = () => {
+      if (document.visibilityState === 'visible') {
+        loadEvents(eventPage).catch((loadError) => {
+          setError(getErrorMessage(loadError));
+        });
+      }
+    };
+    const timer = window.setInterval(refreshEvents, 30_000);
+    window.addEventListener('focus', refreshEvents);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshEvents);
+    };
+  }, [eventPage, loadEvents]);
+
+  useEffect(() => {
     let active = true;
     let socket;
     getIdToken()

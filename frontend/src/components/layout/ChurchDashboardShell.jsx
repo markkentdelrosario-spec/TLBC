@@ -366,6 +366,21 @@ export default function ChurchDashboardShell({
     setSpecialEvents(result.events || []);
   }, [apiBaseUrl, getIdToken]);
 
+  useEffect(() => {
+    if (!isLifeCoach) return undefined;
+    const refreshEvents = () => {
+      if (document.visibilityState === 'visible') {
+        loadSpecialEvents().catch((error) => setActionError(getErrorMessage(error)));
+      }
+    };
+    const timer = window.setInterval(refreshEvents, 30_000);
+    window.addEventListener('focus', refreshEvents);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshEvents);
+    };
+  }, [isLifeCoach, loadSpecialEvents]);
+
   const loadMedia = useCallback(async () => {
     const result = await apiRequest('/upload/ministry-media', {
       getIdToken,
