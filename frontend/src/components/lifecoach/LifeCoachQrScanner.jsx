@@ -232,7 +232,7 @@ export default function LifeCoachQrScanner({
       <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-            The Life Builder Church · LIFE COACH QR Scanner
+            The Life Builder Church · Life Coach QR Scanner
           </p>
           <div className="mt-2 flex items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Record attendance</h1>
@@ -279,7 +279,7 @@ export default function LifeCoachQrScanner({
                 {groupSummary?.date || getCurrentSundayLabel()}
               </p>
               <h2 className="mt-1 text-lg font-bold">
-                {groupSummary?.group?.name || 'Current Sunday attendance'}
+                {groupSummary?.group?.name || (groupSummary ? 'No active group assigned' : 'Current Sunday attendance')}
               </h2>
             </div>
             <p className="rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900">

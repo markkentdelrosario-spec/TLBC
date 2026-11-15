@@ -112,7 +112,7 @@ router.get('/', async (req, res, next) => {
         startTime: '',
         endTime: '',
         location: '',
-        category: 'LIFE COACH Special Event',
+        category: 'Life Coach Special Event',
       })),
     ].sort((first, second) =>
       new Date(first.eventDate) - new Date(second.eventDate) ||

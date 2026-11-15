@@ -100,10 +100,10 @@ export default function AttendanceMonitoringPanel({
     >
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">LIFE COACH tools</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600">Life Coach tools</p>
           <h2 className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">Attendance monitoring</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-            {summary?.group?.name || 'Your assigned group'} · {summary?.date || 'Today'}
+            {summary?.group?.name || (summary ? 'No active group assigned' : 'Your assigned group')} · {summary?.date || 'Today'}
           </p>
         </div>
         <button
@@ -135,7 +135,9 @@ export default function AttendanceMonitoringPanel({
         <p role="status" className="py-6 text-center text-sm text-slate-500">Loading attendance…</p>
       ) : error && !summary ? null : members.length === 0 ? (
         <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-          No active members are assigned to this group.
+          {summary?.group
+            ? 'No active members are assigned to this group.'
+            : 'No active group is assigned to your account.'}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">

@@ -137,7 +137,7 @@ function authorizeLifeCoach(req, res, next) {
   }
   return res
     .status(403)
-    .json({ message: 'Only LIFE COACHES can use this feature.' });
+    .json({ message: 'Only Life Coaches can use this feature.' });
 }
 
 function authorizeSmallGroupLeader(req, res, next) {
@@ -176,7 +176,7 @@ function authorizeAttendanceStatusManagement(req, res, next) {
     return next();
   }
   return res.status(403).json({
-    message: 'Only LIFE COACHES and admins can update attendance statuses.',
+    message: 'Only Life Coaches and admins can update attendance statuses.',
   });
 }
 

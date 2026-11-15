@@ -529,7 +529,10 @@ export default function AdminUserManagementDashboard({
                                 }}
                                 className="h-4 w-4 rounded border-slate-300 text-emerald-700 focus:ring-emerald-600"
                               />
-                              <span>{designation}{!SECONDARY_DESIGNATIONS.includes(designation) ? ' (legacy)' : ''}</span>
+                              <span>
+                                {designation === 'LIFE COACH' ? 'Life Coach' : designation}
+                                {!SECONDARY_DESIGNATIONS.includes(designation) ? ' (legacy)' : ''}
+                              </span>
                             </label>
                           ))}
                           {(draft.secondaryDesignations || []).length > 0 && (

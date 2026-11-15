@@ -233,7 +233,7 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
       <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-            The Life Builder Church · LIFE COACH
+            The Life Builder Church · Life Coach
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-3xl font-bold tracking-tight">Custom event attendance</h1>
@@ -245,7 +245,7 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
             </Link>
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Create a LIFE COACH gathering or seminar, then scan member QR IDs. These scans are stored separately from Sunday attendance.
+            Create a Life Coach gathering or seminar, then scan member QR IDs. These scans are stored separately from Sunday attendance.
           </p>
         </header>
 

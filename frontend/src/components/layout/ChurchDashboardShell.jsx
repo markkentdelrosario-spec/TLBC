@@ -2248,7 +2248,7 @@ export default function ChurchDashboardShell({
                 <p role="status" className="py-4 text-center text-sm text-slate-500">Loading group members…</p>
               ) : smallGroupError ? (
                 <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{smallGroupError}</p>
-              ) : smallGroup ? (
+              ) : smallGroup?.group ? (
                 <>
                   <p className="mb-3 text-sm font-semibold text-slate-700">{smallGroup.group.name}</p>
                   {smallGroup.members.length ? (
@@ -2289,6 +2289,10 @@ export default function ChurchDashboardShell({
                   )}
                   {smallGroupMessage && <p role="status" className="mt-2 text-sm text-emerald-700">{smallGroupMessage}</p>}
                 </>
+              ) : smallGroup ? (
+                <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                  No active group is assigned to your account.
+                </p>
               ) : null}
             </section>
           )}
@@ -2568,8 +2572,8 @@ export default function ChurchDashboardShell({
             <section className="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <h2 className="text-sm font-bold text-slate-900">LIFE COACH special events</h2>
-                  <p className="text-[10px] text-slate-400">Shared with all LIFE COACHES</p>
+                  <h2 className="text-sm font-bold text-slate-900">Life Coach special events</h2>
+                  <p className="text-[10px] text-slate-400">Shared with all Life Coaches</p>
                 </div>
                 <Link
                   to="/scanner/custom-events"

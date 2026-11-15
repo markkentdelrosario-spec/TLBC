@@ -83,8 +83,13 @@ router.get('/group-summary', ...canCheckIn, async (req, res, next) => {
     const memberProfile = await findMemberProfile(req.user);
     const memberGroup = memberProfile?.group;
     if (req.user.role === 'member' && !memberGroup) {
-      return res.status(403).json({
-        message: 'No active group is assigned to this member.',
+      return res.json({
+        date: getChurchAttendanceSundayDate().toISOString().slice(0, 10),
+        group: null,
+        beneficiaryCount: 0,
+        attendanceCount: 0,
+        members: [],
+        attendance: [],
       });
     }
     if (
@@ -219,7 +224,7 @@ router.patch('/status/:userId', ...canManageAttendanceStatus, async (req, res, n
   try {
     const memberProfile = await findMemberProfile(req.user);
     if (req.user.role === 'member' && !memberProfile?.group) {
-      return res.status(403).json({ message: 'No active group is assigned to this LIFE COACH.' });
+      return res.status(403).json({ message: 'No active group is assigned to this Life Coach.' });
     }
     if (req.user.role === 'admin' && !mongoose.isValidObjectId(groupId)) {
       return res.status(400).json({ message: 'groupId is required for admin status updates.' });

@@ -318,7 +318,7 @@ export default function LandingPage() {
             </a>
 
             <a
-              href="https://www.facebook.com/TheLifeBuilderChurch"
+              href="https://www.facebook.com/TheLifeBuilderChurchTaguig"
               target="_blank"
               rel="noopener noreferrer"
               className="group min-h-44 rounded-2xl border border-white/15 bg-white/[0.06] p-5 transition hover:-translate-y-1 hover:border-emerald-200/50 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-amber-200 sm:p-6"
