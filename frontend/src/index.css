@@ -38,6 +38,7 @@
 
   .designation-dropdown[open] > div {
     max-height: 16rem;
+    overflow-y: auto;
     opacity: 1;
     pointer-events: auto;
     transform: translateY(0);

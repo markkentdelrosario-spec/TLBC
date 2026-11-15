@@ -130,6 +130,9 @@ export default function KspCustomEvents({ getIdToken, apiBaseUrl = '/api' }) {
           auth: { token },
           transports: ['websocket', 'polling'],
         });
+        socket.on('connect', () => {
+          loadEvents(1).catch((loadError) => setError(getErrorMessage(loadError)));
+        });
         socket.on('special-event:created', () => {
           loadEvents(1).catch((loadError) => setError(getErrorMessage(loadError)));
         });

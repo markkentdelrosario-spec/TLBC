@@ -450,6 +450,9 @@ export default function ChurchDashboardShell({
         socket.on('connect', () => {
           Promise.all([loadAnnouncements(), loadBirthdays(), loadNotifications()])
             .catch((error) => setActionError(getErrorMessage(error)));
+          if (isLifeCoach) {
+            loadSpecialEvents().catch((error) => setActionError(getErrorMessage(error)));
+          }
           apiRequest('/verse-of-day', { getIdToken, apiBaseUrl })
             .then((metadata) => {
               setVerse((current) => current

@@ -12,6 +12,7 @@ const { emitToAll } = require('../realtime/realtime');
 
 const router = express.Router();
 const eventCategories = new Set(['KSP Gathering', 'Seminars', 'Other']);
+const activeEventFilter = { isActive: { $ne: false } };
 
 router.use(authenticate, authorizeLifeCoach);
 
@@ -22,14 +23,13 @@ router.get('/', async (req, res, next) => {
     return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
   }
   try {
-    const filter = { isActive: true };
     const [events, total] = await Promise.all([
-      CustomEvent.find(filter)
+      CustomEvent.find(activeEventFilter)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      CustomEvent.countDocuments(filter),
+      CustomEvent.countDocuments(activeEventFilter),
     ]);
     return res.json({ events, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (error) {
@@ -48,7 +48,10 @@ router.get('/:eventId/attendees', async (req, res, next) => {
     return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
   }
   try {
-    const event = await CustomEvent.findOne({ _id: eventId, isActive: true }).lean();
+    const event = await CustomEvent.findOne({
+      _id: eventId,
+      ...activeEventFilter,
+    }).lean();
     if (!event) return res.status(404).json({ message: 'Custom event not found.' });
     const filter = { event: event._id };
     const [attendees, total] = await Promise.all([
@@ -122,7 +125,10 @@ router.post('/:eventId/scans', async (req, res, next) => {
   }
 
   try {
-    const event = await CustomEvent.findOne({ _id: eventId, isActive: true })
+    const event = await CustomEvent.findOne({
+      _id: eventId,
+      ...activeEventFilter,
+    })
       .select('_id name')
       .lean();
     if (!event) return res.status(404).json({ message: 'Custom event not found.' });
