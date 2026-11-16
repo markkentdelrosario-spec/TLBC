@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../../context/AuthContext';
@@ -24,6 +24,7 @@ import ConfirmationModal from '../shared/ConfirmationModal';
 import AttendanceMonitoringPanel from '../attendance/AttendanceMonitoringPanel';
 import OfferOnlineModal from '../shared/OfferOnlineModal';
 import PaginationControls from '../shared/PaginationControls';
+import ConnectionStatusBanner from '../shared/ConnectionStatusBanner';
 
 const BIBLE_TRANSLATIONS = [
   ['web', 'World English Bible (WEB)'],
@@ -232,9 +233,15 @@ export default function ChurchDashboardShell({
   const settingsRef = useRef(null);
   const notificationsRef = useRef(null);
   const bibleRequestVersion = useRef(0);
+  const bibleLibraryRequestVersion = useRef(0);
   const notificationIds = useRef(new Set());
   const notificationsOpenRef = useRef(false);
+  const announcementPageRef = useRef(1);
+  const announcementSearchRef = useRef('');
+  const announcementRequestVersion = useRef(0);
   const [announcements, setAnnouncements] = useState([]);
+  const [announcementPage, setAnnouncementPage] = useState(1);
+  const [announcementTotalPages, setAnnouncementTotalPages] = useState(1);
   const [birthdays, setBirthdays] = useState([]);
   const [specialEvents, setSpecialEvents] = useState([]);
   const [notifications, setNotifications] = useState([]);
@@ -256,6 +263,15 @@ export default function ChurchDashboardShell({
   const [readerVerse, setReaderVerse] = useState(null);
   const [readerError, setReaderError] = useState('');
   const [readerLoading, setReaderLoading] = useState(false);
+  const [bibleLibrary, setBibleLibrary] = useState({
+    plans: [],
+    bookmarks: [],
+    planProgress: [],
+  });
+  const [bibleLibraryLoading, setBibleLibraryLoading] = useState(true);
+  const [bibleLibraryError, setBibleLibraryError] = useState('');
+  const [bibleLibraryBusy, setBibleLibraryBusy] = useState('');
+  const [selectedBiblePlanId, setSelectedBiblePlanId] = useState('');
   const [search, setSearch] = useState('');
   const [slide, setSlide] = useState(0);
   const [commentDrafts, setCommentDrafts] = useState({});
@@ -335,10 +351,74 @@ export default function ChurchDashboardShell({
     if (profileNotice) showToast(profileNotice, 'success');
   }, [profileNotice, showToast]);
 
-  const loadAnnouncements = useCallback(async () => {
-    const result = await apiRequest('/announcements', { getIdToken, apiBaseUrl });
-    setAnnouncements(Array.isArray(result) ? result : result.announcements || []);
+  const loadAnnouncements = useCallback(async (page, searchQuery) => {
+    const requestVersion = ++announcementRequestVersion.current;
+    const requestedPage = page || announcementPageRef.current;
+    const query = searchQuery === undefined
+      ? announcementSearchRef.current
+      : searchQuery;
+    const params = new URLSearchParams({
+      page: String(requestedPage),
+      limit: '4',
+    });
+    if (query) params.set('search', query);
+    const result = await apiRequest(`/announcements?${params}`, {
+      getIdToken,
+      apiBaseUrl,
+    });
+    if (requestVersion !== announcementRequestVersion.current) return;
+    const nextPage = result.page || requestedPage;
+    announcementPageRef.current = nextPage;
+    setAnnouncementPage(nextPage);
+    setAnnouncementTotalPages(result.totalPages || 1);
+    setAnnouncements(
+      Array.isArray(result) ? result : result.announcements || []
+    );
   }, [apiBaseUrl, getIdToken]);
+
+  const loadBibleLibrary = useCallback(async () => {
+    const requestVersion = ++bibleLibraryRequestVersion.current;
+    if (!user?._id) {
+      setBibleLibrary({ plans: [], bookmarks: [], planProgress: [] });
+      setBibleLibraryLoading(false);
+      return;
+    }
+
+    setBibleLibraryLoading(true);
+    setBibleLibraryError('');
+    try {
+      const result = await apiRequest('/bible-library', { getIdToken, apiBaseUrl });
+      if (requestVersion !== bibleLibraryRequestVersion.current) return;
+      if (
+        !Array.isArray(result.plans) ||
+        !Array.isArray(result.bookmarks) ||
+        !Array.isArray(result.planProgress)
+      ) {
+        throw new Error('Bible library data is unavailable. Please try again.');
+      }
+      setBibleLibrary({
+        plans: result.plans,
+        bookmarks: result.bookmarks,
+        planProgress: result.planProgress,
+      });
+      setSelectedBiblePlanId((current) => current || result.plans[0]?.id || '');
+    } catch (error) {
+      if (requestVersion === bibleLibraryRequestVersion.current) {
+        setBibleLibraryError(getErrorMessage(error));
+      }
+    } finally {
+      if (requestVersion === bibleLibraryRequestVersion.current) {
+        setBibleLibraryLoading(false);
+      }
+    }
+  }, [apiBaseUrl, getIdToken, user?._id]);
+
+  useEffect(() => {
+    loadBibleLibrary();
+    return () => {
+      bibleLibraryRequestVersion.current += 1;
+    };
+  }, [loadBibleLibrary]);
 
   const loadNotifications = useCallback(async (page = 1) => {
     const result = await apiRequest(`/notifications?page=${page}&limit=10`, { getIdToken, apiBaseUrl });
@@ -423,6 +503,18 @@ export default function ChurchDashboardShell({
   }, [loadNotifications, user?._id]);
 
   useEffect(() => {
+    const query = search.trim();
+    const timer = window.setTimeout(() => {
+      announcementSearchRef.current = query;
+      announcementPageRef.current = 1;
+      loadAnnouncements(1, query).catch((error) =>
+        setActionError(getErrorMessage(error))
+      );
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [loadAnnouncements, search]);
+
+  useEffect(() => {
     if (!user?._id || typeof getIdToken !== 'function') return undefined;
     let socket;
     let active = true;
@@ -466,7 +558,8 @@ export default function ChurchDashboardShell({
             .catch((error) => setActionError(getErrorMessage(error)));
         });
         socket.on('announcement:published', () => {
-          loadAnnouncements().catch((error) => setActionError(getErrorMessage(error)));
+          announcementPageRef.current = 1;
+          loadAnnouncements(1).catch((error) => setActionError(getErrorMessage(error)));
         });
         socket.on('special-event:created', () => {
           if (isLifeCoach) {
@@ -636,9 +729,6 @@ export default function ChurchDashboardShell({
 
   useEffect(() => {
     let active = true;
-    loadAnnouncements().catch((error) => {
-      if (active) setActionError(getErrorMessage(error));
-    });
     loadBirthdays().catch((error) => {
       if (active) setActionError(getErrorMessage(error));
     });
@@ -690,7 +780,6 @@ export default function ChurchDashboardShell({
   }, [
     apiBaseUrl,
     getIdToken,
-    loadAnnouncements,
     loadBirthdays,
     loadMedia,
     loadSmallGroup,
@@ -815,13 +904,7 @@ export default function ChurchDashboardShell({
     return () => window.clearInterval(timer);
   }, [announcements.length]);
 
-  const visibleAnnouncements = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return announcements;
-    return announcements.filter((announcement) =>
-      `${announcement.title} ${announcement.body}`.toLowerCase().includes(term)
-    );
-  }, [announcements, search]);
+  const visibleAnnouncements = announcements;
 
   const heroAnnouncement = announcements[slide % Math.max(announcements.length, 1)];
   const profileName = user?.name || 'Church member';
@@ -964,6 +1047,118 @@ export default function ChurchDashboardShell({
     setReaderChapter(chapter);
     setReaderReference('');
     await loadBibleReference(`${book} ${chapter}`, translation);
+  }
+
+  async function saveBibleBookmark() {
+    if (!readerVerse?.reference) return;
+    setBibleLibraryBusy('bookmark');
+    try {
+      const result = await apiRequest('/bible-library/bookmarks', {
+        getIdToken,
+        apiBaseUrl,
+        method: 'POST',
+        body: JSON.stringify({
+          reference: readerVerse.reference,
+          translation: bibleTranslation,
+        }),
+      });
+      setBibleLibrary((current) => ({
+        ...current,
+        bookmarks: [result.bookmark, ...current.bookmarks],
+      }));
+      showToast('Passage saved to your bookmarks.', 'success');
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+    } finally {
+      setBibleLibraryBusy('');
+    }
+  }
+
+  async function removeBibleBookmark(bookmarkId) {
+    setBibleLibraryBusy(`bookmark:${bookmarkId}`);
+    try {
+      await apiRequest(`/bible-library/bookmarks/${bookmarkId}`, {
+        getIdToken,
+        apiBaseUrl,
+        method: 'DELETE',
+      });
+      setBibleLibrary((current) => ({
+        ...current,
+        bookmarks: current.bookmarks.filter(
+          (bookmark) => String(bookmark._id) !== String(bookmarkId)
+        ),
+      }));
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+    } finally {
+      setBibleLibraryBusy('');
+    }
+  }
+
+  async function startBiblePlan(planId) {
+    setBibleLibraryBusy(`plan:${planId}`);
+    try {
+      const result = await apiRequest(`/bible-library/plans/${planId}`, {
+        getIdToken,
+        apiBaseUrl,
+        method: 'PUT',
+      });
+      setBibleLibrary((current) => ({
+        ...current,
+        planProgress: [
+          result.progress,
+          ...current.planProgress.filter((item) => item.planId !== planId),
+        ],
+      }));
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+    } finally {
+      setBibleLibraryBusy('');
+    }
+  }
+
+  async function toggleBiblePlanDay(planId, dayNumber) {
+    setBibleLibraryBusy(`day:${planId}:${dayNumber}`);
+    try {
+      const result = await apiRequest(
+        `/bible-library/plans/${planId}/days/${dayNumber}`,
+        { getIdToken, apiBaseUrl, method: 'PATCH' }
+      );
+      setBibleLibrary((current) => ({
+        ...current,
+        planProgress: current.planProgress.map((item) =>
+          item.planId === planId ? result.progress : item
+        ),
+      }));
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+    } finally {
+      setBibleLibraryBusy('');
+    }
+  }
+
+  async function removeBiblePlan(planId) {
+    setBibleLibraryBusy(`plan:${planId}`);
+    try {
+      await apiRequest(`/bible-library/plans/${planId}`, {
+        getIdToken,
+        apiBaseUrl,
+        method: 'DELETE',
+      });
+      setBibleLibrary((current) => ({
+        ...current,
+        planProgress: current.planProgress.filter((item) => item.planId !== planId),
+      }));
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+    } finally {
+      setBibleLibraryBusy('');
+    }
+  }
+
+  async function loadBibleBookmark(bookmark) {
+    setBibleTranslation(bookmark.translation);
+    await loadBibleReference(bookmark.reference, bookmark.translation);
   }
 
   async function toggleVerseReaction() {
@@ -1314,6 +1509,7 @@ export default function ChurchDashboardShell({
 
   return (
     <main className="church-dashboard-shell min-h-screen bg-[#f7f8fc] text-slate-800 dark:bg-slate-950 dark:text-slate-100">
+      <ConnectionStatusBanner />
       <div className="mx-auto grid min-h-screen max-w-[1800px] grid-cols-1 md:grid-cols-[200px_minmax(0,1fr)] xl:grid-cols-[218px_minmax(0,1fr)_286px]">
         <aside className="sticky top-0 hidden h-screen self-start flex-col overflow-y-auto border-r border-slate-200 bg-white px-3 py-5 md:flex xl:px-5">
           <Link to="/" className="flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900">
@@ -1371,6 +1567,7 @@ export default function ChurchDashboardShell({
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search announcements"
                 placeholder="Search announcements…"
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               />
@@ -1805,7 +2002,7 @@ export default function ChurchDashboardShell({
             </div>
             {visibleAnnouncements.length ? (
               <div className="grid gap-3 md:grid-cols-2">
-                {visibleAnnouncements.slice(0, 4).map((announcement) => {
+                {visibleAnnouncements.map((announcement) => {
                   const id = announcement._id || announcement.id;
                   return (
                     <article key={id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
@@ -1829,7 +2026,9 @@ export default function ChurchDashboardShell({
                           >
                             ♥ {announcement.reactions?.length || 0}
                           </button>
-                          <span className="text-xs text-slate-400">{announcement.comments?.length || 0} comments</span>
+                          <span className="text-xs text-slate-400">
+                            {announcement.commentCount ?? announcement.comments?.length ?? 0} comments
+                          </span>
                         </div>
                         {announcement.comments?.length > 0 && (
                           <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
@@ -1886,6 +2085,19 @@ export default function ChurchDashboardShell({
             ) : (
               <p className="rounded-xl border border-slate-100 bg-white p-4 text-sm text-slate-500">No announcements match your search.</p>
             )}
+            <p className="sr-only" aria-live="polite">
+              {visibleAnnouncements.length} announcement{visibleAnnouncements.length === 1 ? '' : 's'} on page {announcementPage} of {announcementTotalPages}.
+            </p>
+            <PaginationControls
+              page={announcementPage}
+              totalPages={announcementTotalPages}
+              onPageChange={(page) =>
+                loadAnnouncements(page).catch((error) =>
+                  setActionError(getErrorMessage(error))
+                )
+              }
+              label="Announcement pages"
+            />
           </section>
 
           {user?.role === 'admin' && (
@@ -2012,7 +2224,17 @@ export default function ChurchDashboardShell({
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 bg-white">
                 <div className="flex items-center justify-between bg-violet-50 px-4 py-3">
                   <p className="font-bold text-violet-900">{readerVerse.reference}</p>
-                  <p className="text-[10px] text-slate-500">{readerVerse.translation_name}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-[10px] text-slate-500">{readerVerse.translation_name}</p>
+                    <button
+                      type="button"
+                      onClick={saveBibleBookmark}
+                      disabled={Boolean(bibleLibraryBusy)}
+                      className="min-h-9 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                    >
+                      Save passage
+                    </button>
+                  </div>
                 </div>
                 {readerVerse.verses?.length ? (
                   <div className="max-h-[28rem] space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
@@ -2028,6 +2250,185 @@ export default function ChurchDashboardShell({
                 )}
               </div>
             )}
+            <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              <section
+                aria-labelledby="bible-plans-heading"
+                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <h3 id="bible-plans-heading" className="font-bold text-slate-900">
+                  Reading plans
+                </h3>
+                {bibleLibraryError ? (
+                  <div role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">
+                    <p>{bibleLibraryError}</p>
+                    <button
+                      type="button"
+                      onClick={loadBibleLibrary}
+                      className="mt-2 font-semibold underline underline-offset-2"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : bibleLibraryLoading ? (
+                  <p role="status" className="mt-3 text-sm text-slate-500">
+                    Loading your Bible library…
+                  </p>
+                ) : (
+                  <>
+                    <label className="mt-3 block text-xs font-semibold text-slate-600">
+                      Choose a plan
+                      <select
+                        aria-label="Choose a Bible reading plan"
+                        value={selectedBiblePlanId}
+                        onChange={(event) => setSelectedBiblePlanId(event.target.value)}
+                        className="mt-1 min-h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                      >
+                        {bibleLibrary.plans.map((plan) => (
+                          <option key={plan.id} value={plan.id}>{plan.title}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      {bibleLibrary.plans.find((plan) => plan.id === selectedBiblePlanId)?.description}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => startBiblePlan(selectedBiblePlanId)}
+                      disabled={
+                        !selectedBiblePlanId ||
+                        Boolean(bibleLibraryBusy) ||
+                        bibleLibrary.planProgress.some(
+                          (progress) => progress.planId === selectedBiblePlanId
+                        )
+                      }
+                      className="mt-3 min-h-10 rounded-lg bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {bibleLibrary.planProgress.some(
+                        (progress) => progress.planId === selectedBiblePlanId
+                      ) ? 'Plan started' : 'Start plan'}
+                    </button>
+                    {bibleLibrary.planProgress.length === 0 ? (
+                      <p className="mt-4 rounded-lg bg-white p-3 text-sm text-slate-500">
+                        Start a plan to track your daily reading.
+                      </p>
+                    ) : (
+                      <div className="mt-4 space-y-3">
+                        {bibleLibrary.planProgress.map((progress) => {
+                          const plan = bibleLibrary.plans.find(
+                            (item) => item.id === progress.planId
+                          );
+                          if (!plan) return null;
+                          return (
+                            <article key={progress.planId} className="rounded-lg bg-white p-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <h4 className="text-sm font-bold text-slate-800">{plan.title}</h4>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {progress.completedDayNumbers.length} of {plan.days.length} days complete
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeBiblePlan(plan.id)}
+                                  disabled={Boolean(bibleLibraryBusy)}
+                                  aria-label={`Remove ${plan.title}`}
+                                  className="text-xs font-semibold text-rose-700 underline underline-offset-2 disabled:opacity-50"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <ol className="mt-3 space-y-2">
+                                {plan.days.map((day) => {
+                                  const completed = progress.completedDayNumbers.includes(day.dayNumber);
+                                  return (
+                                    <li
+                                      key={day.dayNumber}
+                                      className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2"
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setReaderReference(day.reference);
+                                          loadBibleReference(day.reference);
+                                        }}
+                                        className="text-left text-xs font-semibold text-violet-800 underline underline-offset-2"
+                                      >
+                                        Day {day.dayNumber}: {day.reference}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        aria-pressed={completed}
+                                        onClick={() => toggleBiblePlanDay(plan.id, day.dayNumber)}
+                                        disabled={Boolean(bibleLibraryBusy)}
+                                        className="min-h-8 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                                      >
+                                        {completed ? 'Completed' : 'Mark complete'}
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </section>
+              <section
+                aria-labelledby="bible-bookmarks-heading"
+                className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+              >
+                <h3 id="bible-bookmarks-heading" className="font-bold text-slate-900">
+                  Saved passages
+                </h3>
+                {bibleLibraryLoading ? (
+                  <p role="status" className="mt-3 text-sm text-slate-500">
+                    Loading saved passages…
+                  </p>
+                ) : bibleLibraryError ? (
+                  <p className="mt-3 text-sm text-slate-500">
+                    Saved passages could not be loaded.
+                  </p>
+                ) : bibleLibrary.bookmarks.length === 0 ? (
+                  <p className="mt-3 rounded-lg bg-white p-3 text-sm text-slate-500">
+                    Save a passage from the reader to find it here later.
+                  </p>
+                ) : (
+                  <ul className="mt-3 space-y-2">
+                    {bibleLibrary.bookmarks.map((bookmark) => (
+                      <li
+                        key={bookmark._id}
+                        className="flex items-center justify-between gap-3 rounded-lg bg-white p-3"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => loadBibleBookmark(bookmark)}
+                          className="min-w-0 text-left"
+                        >
+                          <span className="block truncate text-sm font-semibold text-violet-800 underline underline-offset-2">
+                            {bookmark.reference}
+                          </span>
+                          <span className="mt-1 block text-[10px] uppercase text-slate-500">
+                            {bookmark.translation}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeBibleBookmark(bookmark._id)}
+                          disabled={Boolean(bibleLibraryBusy)}
+                          aria-label={`Remove bookmark ${bookmark.reference}`}
+                          className="shrink-0 text-xs font-semibold text-rose-700 underline underline-offset-2 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
           </section>
 
           {isLeader && (

@@ -87,7 +87,7 @@ export function AuthProvider({ children }) {
     if (!auth) return undefined;
     let active = true;
     const unsubscribe = onAuthStateChanged(auth, async (signedInUser) => {
-      if (!active) return;
+      if (!active || signedInUser !== auth.currentUser) return;
       const eventVersion = ++authEventVersion.current;
       setFirebaseUser(signedInUser);
       setAuthError('');

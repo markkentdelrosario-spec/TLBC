@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import PublicSiteNav from '../components/layout/PublicSiteNav';
 import { apiBaseUrl } from '../config/api';
+import { formatChurchDate, getChurchDateKey } from '../utils/churchDate';
+import {
+  createEventCalendarContent,
+  getEventCalendarFilename,
+} from '../utils/eventCalendar';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = [
@@ -11,25 +16,6 @@ const MONTHS = [
 
 function getDateKey(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function getTodayKey() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function formatDate(dateKey, options = { weekday: 'long', month: 'long', day: 'numeric' }) {
-  const [year, month, day] = dateKey.split('-').map(Number);
-  return new Intl.DateTimeFormat('en-PH', {
-    ...options,
-    timeZone: 'Asia/Manila',
-  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
 }
 
 function formatTime(time) {
@@ -70,6 +56,27 @@ function createWorshipEvent(dateKey) {
 
 function EventCard({ event, featured = false }) {
   const eventDate = String(event.eventDate).slice(0, 10);
+  function downloadCalendarFile() {
+    const eventId = String(event._id || '');
+    const eventPath = eventId.startsWith('worship-')
+      ? '/events'
+      : `/events?eventId=${encodeURIComponent(eventId)}`;
+    const content = createEventCalendarContent({
+      ...event,
+      url: new URL(eventPath, window.location.origin).toString(),
+    });
+    const objectUrl = URL.createObjectURL(
+      new Blob([content], { type: 'text/calendar;charset=utf-8' })
+    );
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = getEventCalendarFilename(event.title);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
+
   return (
     <article className={`group overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-1 hover:shadow-xl ${
       featured
@@ -85,7 +92,7 @@ function EventCard({ event, featured = false }) {
             {event.category}
           </span>
           <span className={`text-right text-xs font-semibold ${featured ? 'text-emerald-100' : 'text-slate-700'}`}>
-            {formatDate(eventDate, { month: 'short', day: 'numeric' })}
+            {formatChurchDate(eventDate, { month: 'short', day: 'numeric' })}
           </span>
         </div>
         <h3 className="mt-4 text-xl font-bold tracking-tight sm:text-2xl">{event.title}</h3>
@@ -112,6 +119,18 @@ function EventCard({ event, featured = false }) {
             </span>
           )}
         </div>
+        <button
+          type="button"
+          onClick={downloadCalendarFile}
+          aria-label={`Add ${event.title} to calendar`}
+          className={`mt-4 inline-flex min-h-10 items-center rounded-lg border px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-600 ${
+            featured
+              ? 'border-white/30 text-white hover:bg-white/10'
+              : 'border-emerald-200 text-emerald-900 hover:bg-emerald-50'
+          }`}
+        >
+          Add to calendar
+        </button>
       </div>
     </article>
   );
@@ -122,7 +141,8 @@ export default function PublicEventsPage() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const todayKey = getTodayKey();
+  const [reloadKey, setReloadKey] = useState(0);
+  const todayKey = getChurchDateKey();
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [month, setMonth] = useState(() => {
     const [year, monthNumber] = todayKey.split('-').map(Number);
@@ -132,6 +152,8 @@ export default function PublicEventsPage() {
   useEffect(() => {
     const controller = new AbortController();
     async function loadEvents() {
+      setLoading(true);
+      setError('');
       try {
         const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/events`, {
           signal: controller.signal,
@@ -151,7 +173,7 @@ export default function PublicEventsPage() {
     }
     loadEvents();
     return () => controller.abort();
-  }, []);
+  }, [reloadKey]);
 
   const eventsByDate = useMemo(() => {
     const [currentYear, currentMonth] = todayKey.split('-').map(Number);
@@ -257,7 +279,7 @@ export default function PublicEventsPage() {
                   <button
                     key={dateKey}
                     type="button"
-                    aria-label={`${formatDate(dateKey)}${hasEvents ? `, ${eventsByDate.get(dateKey).length} event${eventsByDate.get(dateKey).length === 1 ? '' : 's'}` : ''}`}
+                    aria-label={`${formatChurchDate(dateKey)}${hasEvents ? `, ${eventsByDate.get(dateKey).length} event${eventsByDate.get(dateKey).length === 1 ? '' : 's'}` : ''}`}
                     aria-pressed={isSelected}
                     onClick={() => setSelectedDate(dateKey)}
                     className={`relative flex min-h-12 flex-col items-center justify-center rounded-xl text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-600 sm:min-h-16 sm:text-base ${
@@ -297,7 +319,7 @@ export default function PublicEventsPage() {
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-700">Selected date</p>
                 <h2 id="selected-events-heading" className="mt-1 text-xl font-bold">
-                  {formatDate(selectedDate)}
+                  {formatChurchDate(selectedDate)}
                 </h2>
               </div>
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
@@ -308,7 +330,16 @@ export default function PublicEventsPage() {
               {loading ? (
                 <p role="status" className="py-5 text-sm text-slate-700">Loading events…</p>
               ) : error ? (
-                <p role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">{error}</p>
+                <div role="alert" className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">
+                  <p>{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => setReloadKey((key) => key + 1)}
+                    className="mt-3 min-h-10 rounded-lg border border-rose-300 px-3 font-semibold hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : selectedEvents.length ? (
                 selectedEvents.map((event) => <EventCard key={event._id} event={event} />)
               ) : (

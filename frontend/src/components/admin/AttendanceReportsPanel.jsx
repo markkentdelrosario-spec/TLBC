@@ -3,35 +3,19 @@ import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import FilePreviewModal from '../shared/FilePreviewModal';
+import {
+  formatChurchDate,
+  getChurchDateKey,
+  getMostRecentChurchSunday,
+} from '../../utils/churchDate';
 import '../../styles/print.css';
 
 function currentMonth() {
-  const values = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Manila',
-      year: 'numeric',
-      month: '2-digit',
-    })
-      .formatToParts(new Date())
-      .map(({ type, value }) => [type, value])
-  );
-  return `${values.year}-${values.month}`;
+  return getChurchDateKey().slice(0, 7);
 }
 
 function currentSunday() {
-  const values = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Manila',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-      .formatToParts(new Date())
-      .map(({ type, value }) => [type, value])
-  );
-  const date = new Date(`${values.year}-${values.month}-${values.day}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
-  return date.toISOString().slice(0, 10);
+  return getMostRecentChurchSunday();
 }
 
 function isSundayDate(value) {
@@ -39,11 +23,10 @@ function isSundayDate(value) {
 }
 
 function formatSundayDate(value) {
-  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString('en-PH', {
+  return formatChurchDate(value, {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
-    timeZone: 'UTC',
   });
 }
 

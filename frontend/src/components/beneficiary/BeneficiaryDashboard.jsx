@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import ChurchDashboardShell from '../layout/ChurchDashboardShell';
+import { formatChurchDate } from '../../utils/churchDate';
 
 export default function BeneficiaryDashboard({
   getIdToken,
@@ -11,9 +12,12 @@ export default function BeneficiaryDashboard({
   const [attendance, setAttendance] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError('');
     apiRequest('/attendance/my-summary', { getIdToken, apiBaseUrl })
       .then((result) => {
         if (active) setAttendance(result);
@@ -27,7 +31,7 @@ export default function BeneficiaryDashboard({
     return () => {
       active = false;
     };
-  }, [apiBaseUrl, getIdToken]);
+  }, [apiBaseUrl, getIdToken, reloadKey]);
 
   return (
     <ChurchDashboardShell getIdToken={getIdToken} apiBaseUrl={apiBaseUrl}>
@@ -50,6 +54,13 @@ export default function BeneficiaryDashboard({
         {error && (
           <p role="alert" className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             Attendance is currently unavailable: {error}
+            <button
+              type="button"
+              onClick={() => setReloadKey((key) => key + 1)}
+              className="ml-2 font-semibold underline underline-offset-2"
+            >
+              Retry
+            </button>
           </p>
         )}
         {attendance?.recentAttendance?.length > 0 ? (
@@ -66,7 +77,11 @@ export default function BeneficiaryDashboard({
                 {attendance.recentAttendance.map((visit) => (
                   <tr key={`${visit.date}-${visit.checkedInAt}`}>
                     <td className="py-3 pr-4 text-slate-700">
-                      {new Date(`${visit.date}T00:00:00`).toLocaleDateString()}
+                      {formatChurchDate(visit.date, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
                     </td>
                     <td className="py-3 pr-4 text-slate-600">{visit.serviceName}</td>
                     <td className="py-3 text-slate-600">{visit.groupName || 'Church service'}</td>

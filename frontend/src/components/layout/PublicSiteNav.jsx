@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import ConnectionStatusBanner from '../shared/ConnectionStatusBanner';
 
 const links = [
   { label: 'Home', to: '/' },
@@ -14,6 +15,7 @@ export default function PublicSiteNav() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 text-white shadow-lg shadow-slate-950/10 backdrop-blur-xl">
+      <ConnectionStatusBanner />
       <div className="mx-auto flex min-h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-8">
         <Link to="/" className="flex min-w-0 items-center gap-3" aria-label="The Life Builder Church home">
           <img

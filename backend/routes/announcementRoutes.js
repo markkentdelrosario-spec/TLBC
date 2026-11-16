@@ -9,17 +9,73 @@ const {
 } = require('../services/notifications');
 
 const router = express.Router();
+const DEFAULT_ANNOUNCEMENT_PAGE_SIZE = 4;
+const MAX_ANNOUNCEMENT_PAGE_SIZE = 20;
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 router.get('/', authenticate, async (req, res, next) => {
+  const page = Number.parseInt(req.query.page, 10) || 1;
+  const limit = Number.parseInt(req.query.limit, 10) || DEFAULT_ANNOUNCEMENT_PAGE_SIZE;
+  const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  if (page < 1 || limit < 1 || limit > MAX_ANNOUNCEMENT_PAGE_SIZE) {
+    return res.status(400).json({
+      message: `page and limit must be positive; limit cannot exceed ${MAX_ANNOUNCEMENT_PAGE_SIZE}.`,
+    });
+  }
+  if (search.length > 100) {
+    return res.status(400).json({ message: 'search must be 100 characters or fewer.' });
+  }
+  const filter = { status: 'published' };
+  if (search) {
+    const pattern = new RegExp(escapeRegex(search), 'i');
+    filter.$or = [{ title: pattern }, { body: pattern }];
+  }
+
   try {
-    const announcements = await Announcement.find({ status: 'published' })
-      .sort({ publishedAt: -1, createdAt: -1 })
-      .populate('author', 'displayName')
-      .populate('reactions.user', '_id')
-      .populate('comments.user', 'displayName')
-      .populate('comments.reactions', '_id')
-      .lean();
-    return res.json({ announcements });
+    const [announcements, total] = await Promise.all([
+      Announcement.aggregate([
+        { $match: filter },
+        { $sort: { publishedAt: -1, createdAt: -1 } },
+        { $skip: (page - 1) * limit },
+        { $limit: limit },
+        {
+          $project: {
+            title: 1,
+            body: 1,
+            banner: 1,
+            author: 1,
+            status: 1,
+            publishedAt: 1,
+            createdAt: 1,
+            reactions: 1,
+            commentCount: {
+              $size: { $ifNull: ['$comments', []] },
+            },
+            comments: {
+              $slice: [{ $ifNull: ['$comments', []] }, -2],
+            },
+          },
+        },
+      ]).then((rows) =>
+        Announcement.populate(rows, [
+          { path: 'author', select: 'displayName' },
+          { path: 'reactions.user', select: '_id' },
+          { path: 'comments.user', select: 'displayName' },
+          { path: 'comments.reactions', select: '_id' },
+        ])
+      ),
+      Announcement.countDocuments(filter),
+    ]);
+    return res.json({
+      announcements,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
   } catch (error) {
     return next(error);
   }

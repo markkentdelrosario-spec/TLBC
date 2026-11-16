@@ -10,6 +10,11 @@ const {
   createBrevoClient,
   sendRegistrationOtp,
 } = require('../services/email');
+const {
+  manualRegistrationRateLimit,
+  otpVerificationRateLimit,
+  otpResendRateLimit,
+} = require('../middleware/rateLimits');
 
 const router = express.Router();
 const OTP_TTL_MS = 10 * 60 * 1000;
@@ -97,7 +102,7 @@ async function registerManualAccount(req, res, next) {
   }
 }
 
-router.post('/verify-otp', async (req, res, next) => {
+router.post('/verify-otp', otpVerificationRateLimit, async (req, res, next) => {
   const email = normalizeGmail(req.body?.email);
   const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
@@ -197,7 +202,7 @@ router.post('/verify-otp', async (req, res, next) => {
   }
 });
 
-router.post('/resend-otp', async (req, res, next) => {
+router.post('/resend-otp', otpResendRateLimit, async (req, res, next) => {
   const email = normalizeGmail(req.body?.email);
   if (!/^[^\s@]+@gmail\.com$/.test(email)) {
     return res.status(400).json({ message: 'Use a valid Gmail address ending in @gmail.com.' });
@@ -497,6 +502,12 @@ async function registerFirebaseAccount(req, res, next) {
 
 router.post(
   '/register',
+  (req, res, next) => {
+    if (!req.get('authorization')) {
+      return manualRegistrationRateLimit(req, res, next);
+    }
+    return next();
+  },
   (req, res, next) => {
     if (!req.get('authorization')) {
       return registerManualAccount(req, res, next);

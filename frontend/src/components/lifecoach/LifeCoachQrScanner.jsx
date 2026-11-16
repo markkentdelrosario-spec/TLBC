@@ -4,6 +4,13 @@ import { Link } from 'react-router-dom';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import PaginationControls from '../shared/PaginationControls';
+import {
+  CHURCH_TIME_ZONE,
+  formatChurchDate,
+  getChurchDateKey,
+  getMostRecentChurchSunday,
+  isChurchSundayDateKey,
+} from '../../utils/churchDate';
 
 const buttonClass =
   'inline-flex min-h-12 items-center justify-center rounded-xl bg-emerald-700 px-5 py-3 text-base font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50';
@@ -17,27 +24,14 @@ const attendanceStatusStyles = {
 };
 
 function isChurchSunday() {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Manila',
-    weekday: 'short',
-  }).format(new Date()) === 'Sun';
+  return isChurchSundayDateKey(getChurchDateKey());
 }
 
 function getCurrentSundayLabel() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  const date = new Date(`${values.year}-${values.month}-${values.day}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
-  return date.toLocaleDateString(undefined, {
+  return formatChurchDate(getMostRecentChurchSunday(), {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-    timeZone: 'UTC',
   });
 }
 
@@ -315,7 +309,7 @@ export default function LifeCoachQrScanner({
                           ? new Date(member.checkedInAt).toLocaleTimeString([], {
                             hour: 'numeric',
                             minute: '2-digit',
-                            timeZone: 'Asia/Manila',
+                            timeZone: CHURCH_TIME_ZONE,
                           })
                           : '—'}
                       </td>

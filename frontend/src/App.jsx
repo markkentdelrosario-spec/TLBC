@@ -1,19 +1,31 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import AdminUserManagementDashboard from './components/admin/AdminUserManagementDashboard';
-import BeneficiaryDashboard from './components/beneficiary/BeneficiaryDashboard';
 import ProtectedRoute from './components/auth/ProtectedRoute';
-import LifeCoachQrScanner from './components/lifecoach/LifeCoachQrScanner';
-import KspCustomEvents from './components/lifecoach/KspCustomEvents';
-import PastorDashboard from './components/pastor/PastorDashboard';
-import FullLeaderboardsPage from './components/attendance/FullLeaderboardsPage';
 import { AuthProvider, getRoleHomePath, useAuth } from './context/AuthContext';
-import LandingPage from './pages/LandingPage';
-import Login from './pages/Login';
-import PublicEventsPage from './pages/PublicEventsPage';
-import PublicMinistriesPage from './pages/PublicMinistriesPage';
 import { apiBaseUrl } from './config/api';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
+
+const AdminUserManagementDashboard = lazy(() =>
+  import('./components/admin/AdminUserManagementDashboard')
+);
+const BeneficiaryDashboard = lazy(() =>
+  import('./components/beneficiary/BeneficiaryDashboard')
+);
+const LifeCoachQrScanner = lazy(() =>
+  import('./components/lifecoach/LifeCoachQrScanner')
+);
+const KspCustomEvents = lazy(() =>
+  import('./components/lifecoach/KspCustomEvents')
+);
+const PastorDashboard = lazy(() => import('./components/pastor/PastorDashboard'));
+const FullLeaderboardsPage = lazy(() =>
+  import('./components/attendance/FullLeaderboardsPage')
+);
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const Login = lazy(() => import('./pages/Login'));
+const PublicEventsPage = lazy(() => import('./pages/PublicEventsPage'));
+const PublicMinistriesPage = lazy(() => import('./pages/PublicMinistriesPage'));
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
@@ -33,6 +45,13 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <BrowserRouter>
+            <Suspense
+              fallback={
+                <main className="flex min-h-screen items-center justify-center">
+                  <p role="status">Loading page…</p>
+                </main>
+              }
+            >
             <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/events" element={<PublicEventsPage />} />
@@ -167,6 +186,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<HomeRedirect />} />
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </AuthProvider>
       </ToastProvider>

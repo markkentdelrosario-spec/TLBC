@@ -3,6 +3,7 @@ import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { getDesignations } from '../../utils/designations';
 import PaginationControls from '../shared/PaginationControls';
+import { CHURCH_TIME_ZONE } from '../../utils/churchDate';
 
 const statusStyles = {
   present: 'attendance-status-present bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
@@ -16,7 +17,7 @@ function formatTime(value) {
   return new Date(value).toLocaleTimeString([], {
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'Asia/Manila',
+    timeZone: CHURCH_TIME_ZONE,
   });
 }
 

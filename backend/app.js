@@ -7,6 +7,7 @@ const app = express();
 const allowedOrigins = getAllowedOrigins();
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(cors({
   credentials: true,
   origin(origin, callback) {

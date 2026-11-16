@@ -17,6 +17,10 @@ an HTTP response confirms the API listener is reachable. If that check fails,
 read the backend terminal first; a failed MongoDB connection prevents the API
 from listening and makes Vite report a proxy error before any upload route runs.
 Vite logs proxy connection errors with the upstream host and error code.
+The API keeps the legacy `/api/health` response for compatibility, exposes
+`/api/health/live` for process liveness, and returns HTTP 503 from
+`/api/health/ready` while MongoDB is disconnected. Render uses the readiness
+endpoint for its health check.
 
 An HTTP 502 returned by the upload route after the API receives the request is a
 different failure: it means the API could not complete its Cloudinary request.
@@ -80,6 +84,11 @@ Codes expire after 10 minutes, can be resent after a 60-second cooldown, and are
 invalidated after five incorrect attempts. The API endpoints are
 `POST /api/auth/register`, `POST /api/auth/verify-otp`, and
 `POST /api/auth/resend-otp`.
+To protect email delivery and OTP verification, manual registration and OTP
+resend are limited to five requests per IP per 15 minutes; OTP verification is
+limited to 15 requests per IP per 15 minutes in addition to the per-account
+five-attempt limit. The current rate-limit store is process-local and resets on
+restart. Configure a shared store before running multiple API instances.
 
 LIFE COACHES can create shared custom events at `POST /api/custom-events` with
 category `KSP Gathering`, `Seminars`, or `Other` (the last requires
@@ -150,6 +159,16 @@ in the frontend static site's Environment settings (not the backend service),
 then redeploy the frontend so Vite includes it in the build. The reader reports
 a setup or access error when a selected API.Bible version is unavailable.
 
+Signed-in members can save passage references with their selected translation
+and track progress through the built-in reference-only reading plans. The
+backend stores bookmarks and plan progress under the authenticated account;
+scripture text is not copied into these records. Members manage this library
+through `/api/bible-library`, with bookmark creation/removal at
+`/api/bible-library/bookmarks` and reading-plan start, day completion, and
+removal at `/api/bible-library/plans/:planId`. The three available plans are
+defined in `backend/utils/bibleReadingPlans.js`; they do not prescribe a
+completion deadline.
+
 ## Live reactions and notifications
 
 Authenticated dashboard clients connect to the API's Socket.IO endpoint for
@@ -172,3 +191,22 @@ open the relevant dashboard section. Push delivery uses the Firebase Admin
 credentials already configured for the API. Signing out removes that device's
 registered token; native Android clients can register their FCM token using
 the same authenticated `/api/notifications/push-token` endpoint.
+
+## Development checks
+
+From the repository root, `npm test` runs backend and frontend unit tests,
+`npm run build` creates the production frontend, and `npm run check` runs both.
+Run `npm run test:e2e` to build the isolated browser-test configuration and
+check public experiences and an authenticated member flow with Playwright.
+These browser tests use mocked Firebase and API responses, not live accounts.
+Run `npm run audit` from the root to inspect both packages for dependency
+advisories. GitHub Actions runs the checks, browser tests, and audits on pushes
+and pull requests.
+
+The frontend dashboard uses paginated announcements; search is applied by the
+API and returns no more than four announcements per page by default (maximum
+20). The feed returns only the latest two comments per announcement and
+includes the total comment count. Comments remain embedded in each MongoDB
+document, so this bounds feed payloads but not document growth; a separately
+paginated comment collection will be needed before documents approach
+MongoDB's document-size limit.

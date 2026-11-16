@@ -5,6 +5,12 @@ import ImageUpload from '../shared/ImageUpload';
 import ChurchDashboardShell from '../layout/ChurchDashboardShell';
 import FilePreviewModal from '../shared/FilePreviewModal';
 import { useAuth } from '../../context/AuthContext';
+import {
+  formatChurchDate,
+  getChurchDateKey,
+  getMostRecentChurchSunday,
+  isChurchSundayDateKey,
+} from '../../utils/churchDate';
 
 const inputClass =
   'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100';
@@ -12,11 +18,7 @@ const buttonClass =
   'inline-flex min-h-11 items-center justify-center rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50';
 
 function todayString() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return getChurchDateKey();
 }
 
 function currentMonthString() {
@@ -24,16 +26,11 @@ function currentMonthString() {
 }
 
 function mostRecentSunday() {
-  const date = new Date();
-  date.setDate(date.getDate() - date.getDay());
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return getMostRecentChurchSunday();
 }
 
 function formatReportDate(value) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, {
+  return formatChurchDate(value, {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -131,7 +128,7 @@ export default function PastorDashboard({
   async function loadSundayReport(event) {
     event.preventDefault();
     if (!canViewReports) return;
-    if (new Date(`${reportDate}T00:00:00`).getDay() !== 0) {
+    if (!isChurchSundayDateKey(reportDate)) {
       setError('Choose a Sunday for the printable attendance report.');
       return;
     }

@@ -20,6 +20,7 @@ export default function PublicMinistriesPage() {
   const [ministries, setMinistries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const [headingAnimation, setHeadingAnimation] = useState({
     characters: 0,
     phase: 'typing',
@@ -68,6 +69,8 @@ export default function PublicMinistriesPage() {
   useEffect(() => {
     const controller = new AbortController();
     async function loadMinistries() {
+      setLoading(true);
+      setError('');
       try {
         const response = await fetch(`${apiBaseUrl.replace(/\/$/, '')}/ministries`, {
           signal: controller.signal,
@@ -87,7 +90,7 @@ export default function PublicMinistriesPage() {
     }
     loadMinistries();
     return () => controller.abort();
-  }, []);
+  }, [reloadKey]);
 
   return (
     <main className="public-site-page min-h-screen bg-[#f4f7f5] text-slate-900">
@@ -109,7 +112,16 @@ export default function PublicMinistriesPage() {
         {loading ? (
           <p role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-700">Loading ministries…</p>
         ) : error ? (
-          <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-800">{error}</p>
+          <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center text-rose-800">
+            <p>{error}</p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((key) => key + 1)}
+              className="mt-4 min-h-10 rounded-lg border border-rose-300 px-4 font-semibold hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <>
             <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

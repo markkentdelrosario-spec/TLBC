@@ -6,6 +6,7 @@ services:
     plan: free
     buildCommand: npm ci
     startCommand: npm start
+    healthCheckPath: /api/health/ready
     envVars:
       - key: NODE_ENV
         value: production
@@ -39,6 +40,8 @@ services:
           type: web
           name: tlbc-api
           property: host
+      - key: VITE_CHURCH_TIME_ZONE
+        value: Asia/Manila
       - key: VITE_FIREBASE_API_KEY
         sync: false
       - key: VITE_FIREBASE_AUTH_DOMAIN

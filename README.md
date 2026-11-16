@@ -14,6 +14,28 @@ before a published event; opted-in devices also receive a push notification.
 The calendar also lists the recurring Sunday Worship Celebration at 8:30 AM
 onwards.
 
+## Quality and operating requirements
+
+- Run `npm run check` and `npm run audit` from the repository root before
+  merging. GitHub Actions runs both on pushes and pull requests using Node 22.
+- Run `npm run test:e2e` for Playwright checks of public pages, connectivity
+  feedback, calendar export, and a mocked authenticated member flow. These
+  browser checks use test-only Firebase/API responses rather than live
+  credentials.
+- The frontend supports current and previous major releases of Chrome, Edge,
+  Firefox, and Safari. Test public pages and authenticated dashboards at mobile
+  and desktop widths; target WCAG 2.2 AA for keyboard access, focus visibility,
+  readable contrast, and reduced-motion preferences.
+- Church-local date-only values must use the same zone in the API and frontend.
+  Keep backend `CHURCH_TIME_ZONE` and frontend `VITE_CHURCH_TIME_ZONE` aligned;
+  both default to `Asia/Manila`.
+- Dependency updates must pass tests, production builds, and `npm audit` in both
+  packages. Resolve advisories without accepting breaking upgrades blindly.
+- MongoDB backups, restoration tests, uptime targets, monitoring, and personal
+  data retention/deletion periods require an approved operational policy. The
+  application does not automatically delete member, attendance, or comment
+  records; do not assume a retention period until the church approves one.
+
 ## Deploying to Render
 
 Create the Web Service and Static Site from the root `render.yaml` Blueprint.
@@ -28,6 +50,7 @@ Set the prompted values in the Render dashboard:
   `firebase-admin.json`; the Blueprint points
   `GOOGLE_APPLICATION_CREDENTIALS` to `/etc/secrets/firebase-admin.json`.
 - Frontend: the `VITE_FIREBASE_*` values for the deployed Firebase web app.
+  Keep `VITE_CHURCH_TIME_ZONE` aligned with the API's `CHURCH_TIME_ZONE`.
   To enable NKJV, NLT, and NIV in the Bible reader, also set
   `VITE_API_BIBLE_KEY` on the frontend static site to an API.Bible key with
   access to each version.
@@ -44,3 +67,5 @@ Dashboard.
 The static site's `VITE_API_URL` is linked to the API service by the Blueprint.
 For local development, the frontend defaults to Vite's `/api` proxy at
 `http://localhost:5000`; set `VITE_API_URL` to use a different API host.
+For local frontend configuration, copy `frontend/.env.example` to
+`frontend/.env.local` and supply the Firebase values for the intended project.

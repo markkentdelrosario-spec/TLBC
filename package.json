@@ -1,1 +1,14 @@
-{}
+{
+  "name": "tlbc",
+  "private": true,
+  "scripts": {
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "npm --prefix backend test",
+    "test:frontend": "npm --prefix frontend test",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "build": "npm run build:frontend",
+    "build:frontend": "npm --prefix frontend run build",
+    "check": "npm test && npm run build",
+    "audit": "npm --prefix backend audit && npm --prefix frontend audit"
+  }
+}
