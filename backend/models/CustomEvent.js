@@ -18,6 +18,8 @@ const customEventSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+customEventSchema.index({ isActive: 1, createdAt: 1 });
+
 module.exports =
   mongoose.models.CustomEvent ||
   mongoose.model('CustomEvent', customEventSchema);

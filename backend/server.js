@@ -17,6 +17,7 @@ const { validateBrevoConfig } = require('./services/email');
 const { initializeRealtime } = require('./realtime/realtime');
 const { markAbsentMembersIfDue } = require('./services/attendanceAbsence');
 const { sendUpcomingEventReminders } = require('./services/eventReminders');
+const { deactivateExpiredSpecialEvents } = require('./services/expiredEvents');
 const {
   getChurchAttendanceClock,
   getChurchAttendanceSundayDate,
@@ -169,9 +170,26 @@ async function startServer() {
   const eventReminderTimer = setInterval(evaluateUpcomingEventReminders, 30 * 1000);
   eventReminderTimer.unref();
 
+  let specialEventExpirationInProgress = false;
+  const expireSpecialEvents = async () => {
+    if (specialEventExpirationInProgress) return;
+    specialEventExpirationInProgress = true;
+    try {
+      await deactivateExpiredSpecialEvents();
+    } catch (error) {
+      console.error('Unable to deactivate expired special events.', error);
+    } finally {
+      specialEventExpirationInProgress = false;
+    }
+  };
+  expireSpecialEvents();
+  const specialEventExpirationTimer = setInterval(expireSpecialEvents, 30 * 1000);
+  specialEventExpirationTimer.unref();
+
   const shutdown = async () => {
     clearInterval(attendanceAbsenceTimer);
     clearInterval(eventReminderTimer);
+    clearInterval(specialEventExpirationTimer);
     server.close(async () => {
       await mongoose.disconnect();
       process.exit(0);

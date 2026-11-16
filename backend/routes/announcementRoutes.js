@@ -313,4 +313,29 @@ router.post(
   }
 );
 
+router.delete(
+  '/:announcementId',
+  authenticate,
+  authorizeRoles('admin'),
+  async (req, res, next) => {
+    if (!mongoose.isValidObjectId(req.params.announcementId)) {
+      return res.status(400).json({ message: 'announcementId must be a valid ID.' });
+    }
+    try {
+      const announcement = await Announcement.findByIdAndDelete(
+        req.params.announcementId
+      );
+      if (!announcement) {
+        return res.status(404).json({ message: 'Announcement not found.' });
+      }
+      emitToAll('announcement:deleted', {
+        announcementId: String(announcement._id),
+      });
+      return res.json({ message: 'Announcement deleted.' });
+    } catch (error) {
+      return next(error);
+    }
+  }
+);
+
 module.exports = router;

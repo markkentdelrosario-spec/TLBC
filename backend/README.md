@@ -98,7 +98,8 @@ list at `GET /api/custom-events/:eventId/attendees`. Custom event scans are
 written to the dedicated MongoDB collection `custom_event_attendance_scans`,
 separately from Sunday attendance, with one scan per user per event. Active
 special events are also included on the public events calendar using their
-creation date.
+creation date and are automatically deactivated after that church-local date
+passes.
 
 Members assigned the `Small Group Leader` designation can create a small group
 from their dashboard or with `POST /api/groups`. Created groups are numbered
@@ -177,9 +178,11 @@ When the frontend and API are on different origins, set `FRONTEND_ORIGIN` to a
 comma-separated allowlist of frontend origins and set `VITE_SOCKET_URL` in the
 frontend to the API origin. Same-origin deployments need neither setting.
 
-In-app notifications and unread state are stored in MongoDB. Publishing an
-announcement creates notifications for active accounts; reacting to another
-member's announcement or birthday comment notifies that comment's author.
+In-app notifications and unread state are stored in MongoDB. Notifications are
+automatically removed after 24 hours. Publishing an announcement creates
+notifications for active accounts; reacting to another member's announcement
+or birthday comment notifies that comment's author. Administrators can delete
+announcements from the dashboard.
 
 Push alerts are opt-in from the dashboard notification menu. Configure
 `VITE_FIREBASE_MESSAGING_SENDER_ID` and `VITE_FIREBASE_VAPID_KEY` in the

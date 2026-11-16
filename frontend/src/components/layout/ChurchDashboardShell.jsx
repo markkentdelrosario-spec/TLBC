@@ -26,6 +26,8 @@ import OfferOnlineModal from '../shared/OfferOnlineModal';
 import PaginationControls from '../shared/PaginationControls';
 import ConnectionStatusBanner from '../shared/ConnectionStatusBanner';
 
+const NOTIFICATION_RETENTION_MS = 24 * 60 * 60 * 1000;
+
 const BIBLE_TRANSLATIONS = [
   ['web', 'World English Bible (WEB)'],
   ['kjv', 'King James Version (KJV)'],
@@ -240,6 +242,7 @@ export default function ChurchDashboardShell({
   const announcementSearchRef = useRef('');
   const announcementRequestVersion = useRef(0);
   const [announcements, setAnnouncements] = useState([]);
+  const [deletingAnnouncementId, setDeletingAnnouncementId] = useState('');
   const [announcementPage, setAnnouncementPage] = useState(1);
   const [announcementTotalPages, setAnnouncementTotalPages] = useState(1);
   const [birthdays, setBirthdays] = useState([]);
@@ -431,6 +434,23 @@ export default function ChurchDashboardShell({
     setNotificationTotalPages(result.totalPages || 1);
   }, [apiBaseUrl, getIdToken]);
 
+  useEffect(() => {
+    if (!notifications.length) return undefined;
+    const earliestExpiration = Math.min(
+      ...notifications.map(
+        (notification) =>
+          new Date(notification.createdAt).getTime() + NOTIFICATION_RETENTION_MS
+      )
+    );
+    const timer = window.setTimeout(
+      () => loadNotifications(notificationPage).catch((error) =>
+        setActionError(getErrorMessage(error))
+      ),
+      Math.max(0, earliestExpiration - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [loadNotifications, notificationPage, notifications]);
+
   const loadBirthdays = useCallback(async (page = 1) => {
     const result = await apiRequest(`/birthdays?page=${page}&limit=5`, { getIdToken, apiBaseUrl });
     setBirthdays(result.birthdays || []);
@@ -560,6 +580,14 @@ export default function ChurchDashboardShell({
         socket.on('announcement:published', () => {
           announcementPageRef.current = 1;
           loadAnnouncements(1).catch((error) => setActionError(getErrorMessage(error)));
+        });
+        socket.on('announcement:deleted', ({ announcementId }) => {
+          setAnnouncements((items) =>
+            items.filter(
+              (item) => String(item._id || item.id) !== String(announcementId)
+            )
+          );
+          loadAnnouncements().catch((error) => setActionError(getErrorMessage(error)));
         });
         socket.on('special-event:created', () => {
           if (isLifeCoach) {
@@ -1497,6 +1525,30 @@ export default function ChurchDashboardShell({
     }
   }
 
+  async function deleteAnnouncement(id, title) {
+    if (user?.role !== 'admin') return;
+    if (!window.confirm(`Delete “${title}”? This cannot be undone.`)) return;
+
+    setDeletingAnnouncementId(id);
+    try {
+      await apiRequest(`/announcements/${id}`, {
+        getIdToken,
+        apiBaseUrl,
+        method: 'DELETE',
+      });
+      showToast('Announcement deleted.', 'success');
+      const nextPage =
+        announcements.length === 1 && announcementPage > 1
+          ? announcementPage - 1
+          : announcementPage;
+      await loadAnnouncements(nextPage);
+    } catch (error) {
+      showToast(getErrorMessage(error), 'error');
+    } finally {
+      setDeletingAnnouncementId('');
+    }
+  }
+
   const profileCompletionFields = [
     user?.name,
     user?.email,
@@ -1815,7 +1867,7 @@ export default function ChurchDashboardShell({
               <h1 className="mt-2 text-2xl font-bold leading-tight sm:text-[28px]">
                 {heroAnnouncement?.title || `Welcome, ${profileName.split(' ')[0]}`}
               </h1>
-              <p className="mt-2 line-clamp-2 text-sm text-white/85">
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/85">
                 {heroAnnouncement?.body || 'A place to grow in faith, build community, and serve together.'}
               </p>
             </div>
@@ -2010,7 +2062,19 @@ export default function ChurchDashboardShell({
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3">
                           <h3 className="font-bold text-slate-900">{announcement.title}</h3>
-                          <span className="shrink-0 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">Church update</span>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700">Church update</span>
+                            {user?.role === 'admin' && (
+                              <button
+                                type="button"
+                                disabled={deletingAnnouncementId === id}
+                                onClick={() => deleteAnnouncement(id, announcement.title)}
+                                className="min-h-8 rounded-lg border border-rose-200 px-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                              >
+                                {deletingAnnouncementId === id ? 'Deleting…' : 'Delete'}
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-slate-600">{announcement.body}</p>
                         <p className="mt-2 text-[11px] text-slate-400">

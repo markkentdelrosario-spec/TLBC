@@ -6,6 +6,7 @@ const User = require('../models/User');
 const { emitToUser } = require('../realtime/realtime');
 
 const router = express.Router();
+const NOTIFICATION_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 router.get('/', authenticate, async (req, res, next) => {
   const page = Number.parseInt(req.query.page, 10) || 1;
@@ -14,7 +15,10 @@ router.get('/', authenticate, async (req, res, next) => {
     return res.status(400).json({ message: 'page and limit must be positive; limit cannot exceed 100.' });
   }
   try {
-    const filter = { user: req.user._id };
+    const filter = {
+      user: req.user._id,
+      createdAt: { $gte: new Date(Date.now() - NOTIFICATION_RETENTION_MS) },
+    };
     const [notifications, unreadCount, total] = await Promise.all([
       Notification.find(filter)
         .sort({ createdAt: -1 })
@@ -41,7 +45,11 @@ router.get('/', authenticate, async (req, res, next) => {
 router.patch('/read-all', authenticate, async (req, res, next) => {
   try {
     await Notification.updateMany(
-      { user: req.user._id, readAt: null },
+      {
+        user: req.user._id,
+        readAt: null,
+        createdAt: { $gte: new Date(Date.now() - NOTIFICATION_RETENTION_MS) },
+      },
       { $set: { readAt: new Date() } }
     );
     emitToUser(req.user._id, 'notifications:read', { all: true, unreadCount: 0 });
@@ -57,7 +65,12 @@ router.patch('/:notificationId/read', authenticate, async (req, res, next) => {
   }
   try {
     const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.notificationId, user: req.user._id, readAt: null },
+      {
+        _id: req.params.notificationId,
+        user: req.user._id,
+        readAt: null,
+        createdAt: { $gte: new Date(Date.now() - NOTIFICATION_RETENTION_MS) },
+      },
       { $set: { readAt: new Date() } },
       { new: true }
     );
@@ -65,12 +78,14 @@ router.patch('/:notificationId/read', authenticate, async (req, res, next) => {
       const exists = await Notification.exists({
         _id: req.params.notificationId,
         user: req.user._id,
+        createdAt: { $gte: new Date(Date.now() - NOTIFICATION_RETENTION_MS) },
       });
       if (!exists) return res.status(404).json({ message: 'Notification not found.' });
     }
     const unreadCount = await Notification.countDocuments({
       user: req.user._id,
       readAt: null,
+      createdAt: { $gte: new Date(Date.now() - NOTIFICATION_RETENTION_MS) },
     });
     emitToUser(req.user._id, 'notifications:read', {
       notificationId: req.params.notificationId,
