@@ -5,6 +5,7 @@
 **/.env.*
 !**/.env.example
 !frontend/.env.e2e
+!frontend/.env.capacitor
 !frontend/public/images/
 !frontend/public/images/**
 *.log

@@ -11,6 +11,7 @@ function getAllowedOrigins() {
   return [
     ...new Set([
       'http://localhost:5173',
+      'https://localhost',
       'https://tlbc-frontend.onrender.com',
       ...configuredOrigins,
     ]),

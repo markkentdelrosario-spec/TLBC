@@ -36,6 +36,51 @@ onwards.
   application does not automatically delete member, attendance, or comment
   records; do not assume a retention period until the church approves one.
 
+## Android app (Capacitor)
+
+The Android project wraps the Vite frontend; it continues to call the Render
+API. `frontend/.env.capacitor` sets the API origin used by Android builds.
+Configure the other `VITE_FIREBASE_*` client values in `frontend/.env.local`
+before building. These are client-side settings, not Firebase Admin credentials.
+
+The Android launcher icon and splash screens are generated from
+`frontend/assets/logo.png`, converted from
+`frontend/public/images/logo/Logo.jpg`. Regenerate the Android assets with:
+
+```powershell
+npm --prefix frontend run assets:android
+```
+
+After installing Android Studio and its Android SDK, run this from the
+repository root. Capacitor 8's CLI requires Node.js 22 or later:
+
+```powershell
+npm --prefix frontend run build:android
+```
+
+In Firebase Console, register an Android app with package ID
+`com.onrender.tlbcfrontend`, download its `google-services.json`, and put the
+file at `frontend/android/app/google-services.json`. It must belong to the same
+Firebase project as the frontend configuration. Enable Firebase Cloud
+Messaging and the Google and Facebook Authentication providers. Add the
+Android signing certificate's SHA-1 fingerprint to Firebase for Google sign-in.
+Facebook sign-in also needs a Facebook App ID and Client Token in the Android
+project's `local.properties` as `facebookAppId` and `facebookClientToken`, and
+the Facebook OAuth redirect URI configured in Facebook and Firebase. The
+Facebook App Secret belongs only in Firebase Authentication provider settings.
+Do not put it or Firebase Admin credentials in the app.
+
+Native push registration uses the authenticated `/api/notifications/push-token`
+endpoint. Google and Facebook sign-in use their native provider flows and then
+Firebase web authentication, preserving the existing account/profile flow.
+Test these features on an Android device after setting up the Firebase and
+Facebook app configurations.
+
+To distribute a signed APK, open `frontend/android` in Android Studio and use
+**Build → Generate Signed Bundle / APK → APK**. Create and securely back up the
+release signing key; do not commit it. The generated APK can be installed
+directly, and future updates must use the same application ID and signing key.
+
 ## Deploying to Render
 
 Create the Web Service and Static Site from the root `render.yaml` Blueprint.
