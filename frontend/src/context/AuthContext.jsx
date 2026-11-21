@@ -14,15 +14,12 @@ import {
   onAuthStateChanged,
   reauthenticateWithCredential,
   sendPasswordResetEmail,
-  signInWithCredential,
   signInWithCustomToken,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
   updatePassword,
 } from 'firebase/auth';
-import { Capacitor } from '@capacitor/core';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { auth } from '../config/firebase';
 import { apiBaseUrl } from '../config/api';
 import { apiRequest, getErrorMessage } from '../services/api';
@@ -232,18 +229,6 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogle = useCallback(async () => {
     if (!auth) throw firebaseSetupError();
-    if (Capacitor.isNativePlatform()) {
-      const { credential: oauthCredential } =
-        await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
-      if (!oauthCredential?.idToken) {
-        throw new Error('Google did not return an ID token for Firebase sign-in.');
-      }
-      const credential = GoogleAuthProvider.credential(
-        oauthCredential.idToken,
-        oauthCredential.accessToken
-      );
-      return finishSignIn(await signInWithCredential(auth, credential));
-    }
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
     return finishSignIn(await signInWithPopup(auth, provider));
@@ -251,20 +236,6 @@ export function AuthProvider({ children }) {
 
   const loginWithFacebook = useCallback(async () => {
     if (!auth) throw firebaseSetupError();
-    if (Capacitor.isNativePlatform()) {
-      const { credential: oauthCredential } =
-        await FirebaseAuthentication.signInWithFacebook({
-          skipNativeAuth: true,
-          scopes: ['email'],
-        });
-      if (!oauthCredential?.accessToken) {
-        throw new Error('Facebook did not return an access token for Firebase sign-in.');
-      }
-      const credential = FacebookAuthProvider.credential(
-        oauthCredential.accessToken
-      );
-      return finishSignIn(await signInWithCredential(auth, credential));
-    }
     const provider = new FacebookAuthProvider();
     provider.addScope('email');
     return finishSignIn(await signInWithPopup(auth, provider));

@@ -276,15 +276,15 @@ export default function LandingPage() {
             <article className="rounded-2xl border border-white/15 bg-white/[0.06] p-6 sm:p-8">
               <p className="text-sm font-bold uppercase tracking-[0.16em] text-amber-200">Our Mission</p>
               <p className="mt-4 text-lg leading-8 text-slate-100/85">
-                To help people build a life rooted in hope through faith,
-                fellowship, and service.
+                To uplift and build the quality of life by sharing the Gospel
+                of Christ, creating a great impact in the community.
               </p>
             </article>
             <article className="rounded-2xl border border-white/15 bg-white/[0.06] p-6 sm:p-8">
               <p className="text-sm font-bold uppercase tracking-[0.16em] text-amber-200">Our Vision</p>
               <p className="mt-4 text-lg leading-8 text-slate-100/85">
-                To be a welcoming community where people belong, grow together
-                in faith, and build one another up.
+                We are committed and strong Christians, led by the Holy Spirit,
+                building lives until Christ is formed in us.
               </p>
             </article>
           </div>

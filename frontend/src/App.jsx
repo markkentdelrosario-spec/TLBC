@@ -1,13 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react';
-import {
-  BrowserRouter,
-  Navigate,
-  Route,
-  Routes,
-  useNavigate,
-} from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
-import { PushNotifications } from '@capacitor/push-notifications';
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import { AuthProvider, getRoleHomePath, useAuth } from './context/AuthContext';
 import { apiBaseUrl } from './config/api';
@@ -47,57 +39,12 @@ function HomeRedirect() {
   return <Navigate to={getRoleHomePath(user?.role)} replace />;
 }
 
-function NativePushNavigation() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return undefined;
-    let active = true;
-    let listener;
-    PushNotifications.addListener(
-      'pushNotificationActionPerformed',
-      ({ notification }) => {
-        const path = notification?.data?.url;
-        if (typeof path !== 'string') return;
-        let target;
-        try {
-          target = new URL(path, window.location.origin);
-        } catch (error) {
-          console.error('Ignoring a push notification with an invalid destination.', error);
-          return;
-        }
-        if (target.origin !== window.location.origin) return;
-        navigate(`${target.pathname}${target.search}${target.hash}`);
-      }
-    )
-      .then((registeredListener) => {
-        if (active) listener = registeredListener;
-        else registeredListener.remove().catch((error) => {
-          console.error('Unable to remove the native push action listener.', error);
-        });
-      })
-      .catch((error) => {
-        if (active) console.error('Unable to listen for native push actions.', error);
-      });
-
-    return () => {
-      active = false;
-      listener?.remove().catch((error) => {
-        console.error('Unable to remove the native push action listener.', error);
-      });
-    };
-  }, [navigate]);
-
-  return null;
-}
-
 export default function App() {
   return (
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
           <BrowserRouter>
-            <NativePushNavigation />
             <Suspense
               fallback={
                 <main className="flex min-h-screen items-center justify-center">
