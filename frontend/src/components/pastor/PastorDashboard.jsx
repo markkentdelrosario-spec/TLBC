@@ -700,7 +700,7 @@ export default function PastorDashboard({
                   <img
                     src={announcement.banner.url}
                     alt="Announcement banner preview"
-                    className="max-h-56 w-full rounded-xl border border-slate-200 object-cover"
+                    className="max-h-56 w-full rounded-xl border border-slate-200 object-contain"
                   />
                   <button
                     type="button"

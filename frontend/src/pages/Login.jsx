@@ -250,6 +250,12 @@ export default function Login() {
       showToast(message, 'error');
       return;
     }
+    if (!birthDate) {
+      const message = 'Birthday is required to create an account.';
+      setError(message);
+      showToast(message, 'error');
+      return;
+    }
     if (password.length < 8) {
       const message = 'Choose a password with at least 8 characters.';
       setError(message);
@@ -262,7 +268,7 @@ export default function Login() {
         name: name.trim(),
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
-        ...(birthDate ? { birthDate } : {}),
+        birthDate,
         ...(profilePhoto ? { profilePhoto } : {}),
         password,
       });
@@ -545,10 +551,11 @@ export default function Login() {
                   />
                 </label>
                 <label className="block text-xs font-semibold text-slate-700">
-                  Birthday <span className="font-normal text-slate-400">(optional)</span>
+                  Birthday
                   <input
                     type="date"
                     autoComplete="bday"
+                    required
                     value={birthDate}
                     onChange={(event) => setBirthDate(event.target.value)}
                     className={inputClass}

@@ -52,12 +52,14 @@ async function registerManualAccount(req, res, next) {
     return res.status(400).json({ message: 'Phone number must be 32 characters or fewer.' });
   }
   if (
-    birthDate &&
-    (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
-      Number.isNaN(Date.parse(`${birthDate}T00:00:00.000Z`)) ||
-      new Date(`${birthDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== birthDate)
+    !birthDate ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
+    Number.isNaN(Date.parse(`${birthDate}T00:00:00.000Z`)) ||
+    new Date(`${birthDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== birthDate
   ) {
-    return res.status(400).json({ message: 'Birth date must be a valid YYYY-MM-DD date.' });
+    return res.status(400).json({
+      message: 'Birthday is required and must be a valid YYYY-MM-DD date.',
+    });
   }
   if (
     profilePhoto &&

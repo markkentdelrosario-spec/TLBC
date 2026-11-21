@@ -1905,7 +1905,7 @@ export default function ChurchDashboardShell({
 
           <section className="relative mb-4 min-h-[150px] overflow-hidden rounded-2xl bg-gradient-to-r from-[#5e55dc] via-[#7162e8] to-[#7862e3] px-6 py-6 text-white shadow-sm sm:px-8">
             {(heroAnnouncement?.banner?.url || heroAnnouncement?.images?.[0]?.url) && (
-              <img src={heroAnnouncement.banner?.url || heroAnnouncement.images[0].url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+              <img src={heroAnnouncement.banner?.url || heroAnnouncement.images[0].url} alt="" className="absolute inset-0 h-full w-full object-contain opacity-25" />
             )}
             <div className="absolute -right-3 -top-10 h-48 w-48 rounded-full border-[18px] border-white/10" />
             <div
@@ -2141,7 +2141,7 @@ export default function ChurchDashboardShell({
                           <img
                             src={announcementImages[cardSlideIndex].url}
                             alt={`${announcement.title} image ${cardSlideIndex + 1}`}
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-contain"
                           />
                           {announcementImages.length > 1 && (
                             <>
@@ -2352,7 +2352,7 @@ export default function ChurchDashboardShell({
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {announcementDraft.images.map((image, index) => (
                       <div key={image.publicId} className="relative">
-                        <img src={image.url} alt={`Announcement image ${index + 1} preview`} className="h-24 w-full rounded-lg object-cover" />
+                        <img src={image.url} alt={`Announcement image ${index + 1} preview`} className="h-24 w-full rounded-lg object-contain" />
                         <button
                           type="button"
                           aria-label={`Remove announcement image ${index + 1}`}
@@ -3012,7 +3012,7 @@ export default function ChurchDashboardShell({
                       key={detailImages[safeIndex].publicId || `detail-image-${safeIndex}`}
                       src={detailImages[safeIndex].url}
                       alt={`${selectedAnnouncement.title} image ${safeIndex + 1}`}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
                     />
                     {detailImages.length > 1 && (
                       <>
