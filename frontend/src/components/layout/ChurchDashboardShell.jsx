@@ -310,7 +310,8 @@ export default function ChurchDashboardShell({
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
   const [mediaNotice, setMediaNotice] = useState('');
-  const [announcementDraft, setAnnouncementDraft] = useState({ title: '', body: '' });
+  const [announcementDraft, setAnnouncementDraft] = useState({ title: '', body: '', images: [] });
+  const [announcementImageBusy, setAnnouncementImageBusy] = useState(false);
   const [verseReaction, setVerseReaction] = useState({ reacted: false, reactionCount: 0 });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -1507,6 +1508,7 @@ export default function ChurchDashboardShell({
   async function publishAdminAnnouncement(event) {
     event.preventDefault();
     setActionError('');
+    if (announcementImageBusy) return;
     try {
       await apiRequest('/announcements', {
         getIdToken,
@@ -1515,13 +1517,53 @@ export default function ChurchDashboardShell({
         body: JSON.stringify({
           title: announcementDraft.title.trim(),
           body: announcementDraft.body.trim(),
+          images: announcementDraft.images,
           status: 'published',
         }),
       });
-      setAnnouncementDraft({ title: '', body: '' });
+      setAnnouncementDraft({ title: '', body: '', images: [] });
       await loadAnnouncements();
     } catch (error) {
       setActionError(getErrorMessage(error));
+    }
+  }
+
+  async function uploadAnnouncementImages(event) {
+    const input = event.currentTarget;
+    const files = Array.from(input.files || []);
+    input.value = '';
+    if (!files.length) return;
+    const availableSlots = 10 - announcementDraft.images.length;
+    if (files.length > availableSlots) {
+      setActionError(`An announcement can include up to 10 images. You can add ${availableSlots} more.`);
+      return;
+    }
+
+    setActionError('');
+    setAnnouncementImageBusy(true);
+    try {
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('folder', 'announcement-banners');
+        const result = await apiRequest('/upload', {
+          getIdToken,
+          apiBaseUrl,
+          method: 'POST',
+          body: formData,
+        });
+        setAnnouncementDraft((draft) => ({
+          ...draft,
+          images: [
+            ...draft.images,
+            { url: result.secure_url, publicId: result.public_id },
+          ],
+        }));
+      }
+    } catch (error) {
+      setActionError(getErrorMessage(error));
+    } finally {
+      setAnnouncementImageBusy(false);
     }
   }
 
@@ -1856,8 +1898,8 @@ export default function ChurchDashboardShell({
           </div>
 
           <section className="relative mb-4 min-h-[150px] overflow-hidden rounded-2xl bg-gradient-to-r from-[#5e55dc] via-[#7162e8] to-[#7862e3] px-6 py-6 text-white shadow-sm sm:px-8">
-            {heroAnnouncement?.banner?.url && (
-              <img src={heroAnnouncement.banner.url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
+            {(heroAnnouncement?.banner?.url || heroAnnouncement?.images?.[0]?.url) && (
+              <img src={heroAnnouncement.banner?.url || heroAnnouncement.images[0].url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
             )}
             <div className="absolute -right-3 -top-10 h-48 w-48 rounded-full border-[18px] border-white/10" />
             <div className="relative max-w-xl">
@@ -2056,9 +2098,24 @@ export default function ChurchDashboardShell({
               <div className="grid gap-3 md:grid-cols-2">
                 {visibleAnnouncements.map((announcement) => {
                   const id = announcement._id || announcement.id;
+                  const announcementImages = [
+                    ...(announcement.banner?.url ? [announcement.banner] : []),
+                    ...(announcement.images || []),
+                  ];
                   return (
                     <article key={id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                      {announcement.banner?.url && <img src={announcement.banner.url} alt="" className="h-32 w-full object-cover" />}
+                      {announcementImages.length > 0 && (
+                        <div className={`grid gap-1 ${announcementImages.length > 1 ? 'grid-cols-2' : ''}`}>
+                          {announcementImages.map((image, index) => (
+                            <img
+                              key={image.publicId || `${id}-image-${index}`}
+                              src={image.url}
+                              alt=""
+                              className="h-32 w-full object-cover"
+                            />
+                          ))}
+                        </div>
+                      )}
                       <div className="p-4">
                         <div className="flex items-start justify-between gap-3">
                           <h3 className="font-bold text-slate-900">{announcement.title}</h3>
@@ -2186,7 +2243,46 @@ export default function ChurchDashboardShell({
                   placeholder="Share an update with the church…"
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-300"
                 />
-                <button className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">Publish announcement</button>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Announcement images (up to 10)
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    disabled={announcementImageBusy || announcementDraft.images.length >= 10}
+                    onChange={uploadAnnouncementImages}
+                    className="mt-1 block w-full text-xs text-slate-600 file:mr-2 file:min-h-9 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:text-xs file:font-semibold file:text-violet-800"
+                  />
+                </label>
+                <p className="text-xs text-slate-500">
+                  {announcementImageBusy
+                    ? 'Uploading images…'
+                    : `${announcementDraft.images.length}/10 images uploaded. Each image must be 10 MB or smaller.`}
+                </p>
+                {announcementDraft.images.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {announcementDraft.images.map((image, index) => (
+                      <div key={image.publicId} className="relative">
+                        <img src={image.url} alt={`Announcement image ${index + 1} preview`} className="h-24 w-full rounded-lg object-cover" />
+                        <button
+                          type="button"
+                          aria-label={`Remove announcement image ${index + 1}`}
+                          disabled={announcementImageBusy}
+                          onClick={() => setAnnouncementDraft((draft) => ({
+                            ...draft,
+                            images: draft.images.filter((item) => item.publicId !== image.publicId),
+                          }))}
+                          className="absolute right-1 top-1 rounded bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button disabled={announcementImageBusy} className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
+                  {announcementImageBusy ? 'Uploading images…' : 'Publish announcement'}
+                </button>
               </form>
             </section>
           )}

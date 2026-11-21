@@ -13,6 +13,7 @@ const announcementSchema = new mongoose.Schema(
     title: { type: String, required: true, trim: true, maxlength: 160 },
     body: { type: String, required: true, trim: true, maxlength: 10000 },
     banner: { type: bannerSchema, default: undefined },
+    images: { type: [bannerSchema], default: [] },
     author: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

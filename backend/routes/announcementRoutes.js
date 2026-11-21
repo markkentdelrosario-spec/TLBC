@@ -11,6 +11,17 @@ const {
 const router = express.Router();
 const DEFAULT_ANNOUNCEMENT_PAGE_SIZE = 4;
 const MAX_ANNOUNCEMENT_PAGE_SIZE = 20;
+const MAX_ANNOUNCEMENT_IMAGES = 10;
+
+function isAnnouncementImage(image) {
+  return (
+    image &&
+    typeof image.url === 'string' &&
+    typeof image.publicId === 'string' &&
+    /^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\//i.test(image.url) &&
+    image.publicId.startsWith('tlbc/announcement-banners/')
+  );
+}
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -46,6 +57,7 @@ router.get('/', authenticate, async (req, res, next) => {
             title: 1,
             body: 1,
             banner: 1,
+            images: 1,
             author: 1,
             status: 1,
             publishedAt: 1,
@@ -259,6 +271,7 @@ router.post(
       typeof body.body === 'string' ? body.body.trim() : '';
     const status = body.status || 'published';
     const banner = body.banner;
+    const images = body.images;
 
     if (!title || title.length > 160) {
       return res.status(400).json({
@@ -278,13 +291,20 @@ router.post(
     if (
       banner !== undefined &&
       banner !== null &&
-      (typeof banner.url !== 'string' ||
-        typeof banner.publicId !== 'string' ||
-        !/^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\//i.test(banner.url) ||
-        !banner.publicId.startsWith('tlbc/announcement-banners/'))
+      !isAnnouncementImage(banner)
     ) {
       return res.status(400).json({
         message: 'banner must be an uploaded Cloudinary announcement image.',
+      });
+    }
+    if (
+      images !== undefined &&
+      (!Array.isArray(images) ||
+        images.length > MAX_ANNOUNCEMENT_IMAGES ||
+        images.some((image) => !isAnnouncementImage(image)))
+    ) {
+      return res.status(400).json({
+        message: `images must contain no more than ${MAX_ANNOUNCEMENT_IMAGES} uploaded Cloudinary announcement images.`,
       });
     }
 
@@ -293,6 +313,7 @@ router.post(
         title,
         body: announcementBody,
         ...(banner ? { banner } : {}),
+        ...(images ? { images } : {}),
         author: req.user._id,
         status,
         publishedAt: status === 'published' ? new Date() : null,
