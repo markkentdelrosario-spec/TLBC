@@ -12,6 +12,7 @@ export default function ImageUpload({
   label = 'Choose image',
   onUploaded,
   compact = false,
+  uploadPath = '/upload',
 }) {
   const { showToast } = useToast();
   const [file, setFile] = useState(null);
@@ -46,7 +47,7 @@ export default function ImageUpload({
       const formData = new FormData();
       formData.append('image', file);
       formData.append('folder', folder);
-      const result = await apiRequest('/upload', {
+      const result = await apiRequest(uploadPath, {
         getIdToken,
         apiBaseUrl,
         method: 'POST',

@@ -6,6 +6,7 @@ const { authenticate } = require('../middleware/authMiddleware');
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const MinistryMedia = require('../models/MinistryMedia');
 const { getDesignations } = require('../utils/designations');
+const { createRateLimiter } = require('../middleware/rateLimits');
 
 const router = express.Router();
 const uploadFolders = new Set([
@@ -151,6 +152,22 @@ function handleMulterError(uploadError, res, next, fileLabel) {
 router.post('/', authenticate, (req, res, next) => {
   imageUpload.single('image')(req, res, (uploadError) => {
     if (handleMulterError(uploadError, res, next, 'Image')) return;
+    handleImageUpload(req, res, next).catch(next);
+  });
+});
+
+const profilePictureUploadRateLimit = createRateLimiter(
+  10,
+  'Too many profile image uploads. Please wait 15 minutes and try again.'
+);
+
+router.post('/profile-picture', profilePictureUploadRateLimit, (req, res, next) => {
+  imageUpload.single('image')(req, res, (uploadError) => {
+    if (handleMulterError(uploadError, res, next, 'Profile image')) return;
+    if (!req.file) {
+      return res.status(400).json({ message: 'An image file is required.' });
+    }
+    req.body = { ...req.body, folder: 'profile-pictures' };
     handleImageUpload(req, res, next).catch(next);
   });
 });

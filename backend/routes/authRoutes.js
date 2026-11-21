@@ -36,6 +36,11 @@ async function registerManualAccount(req, res, next) {
   const email = normalizeGmail(body.email);
   const phoneNumber = typeof body.phoneNumber === 'string' ? body.phoneNumber.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  const birthDate = typeof body.birthDate === 'string' ? body.birthDate.trim() : '';
+  const profilePhoto =
+    body.profilePhoto && typeof body.profilePhoto === 'object'
+      ? body.profilePhoto
+      : null;
 
   if (!displayName || displayName.length > 120) {
     return res.status(400).json({ message: 'Full name is required and must be 120 characters or fewer.' });
@@ -45,6 +50,27 @@ async function registerManualAccount(req, res, next) {
   }
   if (phoneNumber.length > 32) {
     return res.status(400).json({ message: 'Phone number must be 32 characters or fewer.' });
+  }
+  if (
+    birthDate &&
+    (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) ||
+      Number.isNaN(Date.parse(`${birthDate}T00:00:00.000Z`)) ||
+      new Date(`${birthDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== birthDate)
+  ) {
+    return res.status(400).json({ message: 'Birth date must be a valid YYYY-MM-DD date.' });
+  }
+  if (
+    profilePhoto &&
+    (
+      typeof profilePhoto.url !== 'string' ||
+      typeof profilePhoto.publicId !== 'string' ||
+      !/^https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\//i.test(profilePhoto.url) ||
+      !profilePhoto.publicId.startsWith('tlbc/profile-pictures/')
+    )
+  ) {
+    return res.status(400).json({
+      message: 'Profile photo must be a valid uploaded Cloudinary profile image.',
+    });
   }
   if (password.length < 8 || password.length > 128) {
     return res.status(400).json({ message: 'Password must be between 8 and 128 characters.' });
@@ -70,6 +96,8 @@ async function registerManualAccount(req, res, next) {
       email,
       displayName,
       phoneNumber: phoneNumber || undefined,
+      ...(birthDate ? { birthDate: new Date(`${birthDate}T00:00:00.000Z`) } : {}),
+      ...(profilePhoto ? { profilePhoto, profilePicture: profilePhoto.url } : {}),
       role: 'member',
       isActive: false,
       isVerified: false,

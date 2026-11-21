@@ -26,6 +26,7 @@ const announcementSchema = new mongoose.Schema(
       required: true,
     },
     publishedAt: { type: Date, default: null },
+    expiresAt: { type: Date, default: null },
     reactions: [
       {
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -45,6 +46,7 @@ const announcementSchema = new mongoose.Schema(
 );
 
 announcementSchema.index({ status: 1, publishedAt: -1 });
+announcementSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports =
   mongoose.models.Announcement ||

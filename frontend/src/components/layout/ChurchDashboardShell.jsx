@@ -310,7 +310,10 @@ export default function ChurchDashboardShell({
   const [mediaBusy, setMediaBusy] = useState(false);
   const [mediaError, setMediaError] = useState('');
   const [mediaNotice, setMediaNotice] = useState('');
-  const [announcementDraft, setAnnouncementDraft] = useState({ title: '', body: '', images: [] });
+  const [announcementDraft, setAnnouncementDraft] = useState({ title: '', body: '', images: [], expiresAt: '' });
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [selectedAnnouncementImageIndex, setSelectedAnnouncementImageIndex] = useState(0);
+  const [announcementSlideIndexes, setAnnouncementSlideIndexes] = useState({});
   const [announcementImageBusy, setAnnouncementImageBusy] = useState(false);
   const [verseReaction, setVerseReaction] = useState({ reacted: false, reactionCount: 0 });
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1518,10 +1521,13 @@ export default function ChurchDashboardShell({
           title: announcementDraft.title.trim(),
           body: announcementDraft.body.trim(),
           images: announcementDraft.images,
+          ...(announcementDraft.expiresAt
+            ? { expiresAt: new Date(announcementDraft.expiresAt).toISOString() }
+            : {}),
           status: 'published',
         }),
       });
-      setAnnouncementDraft({ title: '', body: '', images: [] });
+      setAnnouncementDraft({ title: '', body: '', images: [], expiresAt: '' });
       await loadAnnouncements();
     } catch (error) {
       setActionError(getErrorMessage(error));
@@ -1902,7 +1908,24 @@ export default function ChurchDashboardShell({
               <img src={heroAnnouncement.banner?.url || heroAnnouncement.images[0].url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-25" />
             )}
             <div className="absolute -right-3 -top-10 h-48 w-48 rounded-full border-[18px] border-white/10" />
-            <div className="relative max-w-xl">
+            <div
+              className="relative max-w-xl cursor-pointer"
+              role={heroAnnouncement ? 'button' : undefined}
+              tabIndex={heroAnnouncement ? 0 : undefined}
+              onClick={() => {
+                if (heroAnnouncement) {
+                  setSelectedAnnouncement(heroAnnouncement);
+                  setSelectedAnnouncementImageIndex(0);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (heroAnnouncement && (event.key === 'Enter' || event.key === ' ')) {
+                  event.preventDefault();
+                  setSelectedAnnouncement(heroAnnouncement);
+                  setSelectedAnnouncementImageIndex(0);
+                }
+              }}
+            >
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-violet-100">
                 {heroAnnouncement ? 'Church highlight' : 'The Life Builder Church'}
               </p>
@@ -2102,18 +2125,59 @@ export default function ChurchDashboardShell({
                     ...(announcement.banner?.url ? [announcement.banner] : []),
                     ...(announcement.images || []),
                   ];
+                  const cardSlideIndex =
+                    (announcementSlideIndexes[id] || 0) % Math.max(announcementImages.length, 1);
                   return (
-                    <article key={id} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                    <article
+                      key={id}
+                      onClick={() => {
+                        setSelectedAnnouncement(announcement);
+                        setSelectedAnnouncementImageIndex(0);
+                      }}
+                      className="cursor-pointer overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
+                    >
                       {announcementImages.length > 0 && (
-                        <div className={`grid gap-1 ${announcementImages.length > 1 ? 'grid-cols-2' : ''}`}>
-                          {announcementImages.map((image, index) => (
-                            <img
-                              key={image.publicId || `${id}-image-${index}`}
-                              src={image.url}
-                              alt=""
-                              className="h-32 w-full object-cover"
-                            />
-                          ))}
+                        <div className="relative h-32 overflow-hidden bg-slate-100">
+                          <img
+                            src={announcementImages[cardSlideIndex].url}
+                            alt={`${announcement.title} image ${cardSlideIndex + 1}`}
+                            className="h-full w-full object-cover"
+                          />
+                          {announcementImages.length > 1 && (
+                            <>
+                              <button
+                                type="button"
+                                aria-label="Previous announcement image"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setAnnouncementSlideIndexes((indexes) => ({
+                                    ...indexes,
+                                    [id]: ((indexes[id] || 0) - 1 + announcementImages.length) % announcementImages.length,
+                                  }));
+                                }}
+                                className="absolute left-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-slate-950/70 text-lg text-white shadow"
+                              >
+                                ‹
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Next announcement image"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setAnnouncementSlideIndexes((indexes) => ({
+                                    ...indexes,
+                                    [id]: ((indexes[id] || 0) + 1) % announcementImages.length,
+                                  }));
+                                }}
+                                className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-slate-950/70 text-lg text-white shadow"
+                              >
+                                ›
+                              </button>
+                              <span className="absolute bottom-2 right-2 rounded-full bg-slate-950/70 px-2 py-1 text-[10px] font-bold text-white">
+                                {cardSlideIndex + 1}/{announcementImages.length}
+                              </span>
+                            </>
+                          )}
                         </div>
                       )}
                       <div className="p-4">
@@ -2125,7 +2189,10 @@ export default function ChurchDashboardShell({
                               <button
                                 type="button"
                                 disabled={deletingAnnouncementId === id}
-                                onClick={() => deleteAnnouncement(id, announcement.title)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteAnnouncement(id, announcement.title);
+                                }}
                                 className="min-h-8 rounded-lg border border-rose-200 px-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                               >
                                 {deletingAnnouncementId === id ? 'Deleting…' : 'Delete'}
@@ -2139,6 +2206,17 @@ export default function ChurchDashboardShell({
                           {announcement.publishedAt ? ` · ${new Date(announcement.publishedAt).toLocaleDateString()}` : ''}
                         </p>
                         <div className="mt-3 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedAnnouncement(announcement);
+                              setSelectedAnnouncementImageIndex(0);
+                            }}
+                            className="text-xs font-bold text-violet-700 hover:text-violet-900"
+                          >
+                            View full announcement
+                          </button>
                           <button
                             type="button"
                             onClick={() => toggleReaction('announcement', id)}
@@ -2252,6 +2330,17 @@ export default function ChurchDashboardShell({
                     disabled={announcementImageBusy || announcementDraft.images.length >= 10}
                     onChange={uploadAnnouncementImages}
                     className="mt-1 block w-full text-xs text-slate-600 file:mr-2 file:min-h-9 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:text-xs file:font-semibold file:text-violet-800"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Remove announcement after <span className="font-normal text-slate-400">(optional)</span>
+                  <input
+                    type="datetime-local"
+                    value={announcementDraft.expiresAt}
+                    onChange={(event) =>
+                      setAnnouncementDraft((draft) => ({ ...draft, expiresAt: event.target.value }))
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-300"
                   />
                 </label>
                 <p className="text-xs text-slate-500">
@@ -2895,6 +2984,105 @@ export default function ChurchDashboardShell({
             />
           )}
         </section>
+
+        {selectedAnnouncement && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setSelectedAnnouncement(null);
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="announcement-detail-title"
+              className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white shadow-2xl"
+            >
+              {(() => {
+                const detailImages = [
+                  ...(selectedAnnouncement.banner?.url ? [selectedAnnouncement.banner] : []),
+                  ...(selectedAnnouncement.images || []),
+                ];
+                if (!detailImages.length) return null;
+                const safeIndex =
+                  selectedAnnouncementImageIndex % detailImages.length;
+                return (
+                  <div className="relative h-64 overflow-hidden bg-slate-100 sm:h-[420px]">
+                    <img
+                      key={detailImages[safeIndex].publicId || `detail-image-${safeIndex}`}
+                      src={detailImages[safeIndex].url}
+                      alt={`${selectedAnnouncement.title} image ${safeIndex + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                    {detailImages.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          aria-label="Previous announcement image"
+                          onClick={() =>
+                            setSelectedAnnouncementImageIndex(
+                              (safeIndex - 1 + detailImages.length) % detailImages.length
+                            )
+                          }
+                          className="absolute left-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-slate-950/75 text-3xl leading-none text-white shadow-lg"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Next announcement image"
+                          onClick={() =>
+                            setSelectedAnnouncementImageIndex(
+                              (safeIndex + 1) % detailImages.length
+                            )
+                          }
+                          className="absolute right-4 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-slate-950/75 text-3xl leading-none text-white shadow-lg"
+                        >
+                          ›
+                        </button>
+                        <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-slate-950/75 px-3 py-1 text-xs font-bold text-white">
+                          {safeIndex + 1} / {detailImages.length}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="p-5 sm:p-8">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-600">Church announcement</p>
+                    <h2 id="announcement-detail-title" className="mt-2 text-2xl font-black text-slate-950 sm:text-3xl">
+                      {selectedAnnouncement.title}
+                    </h2>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Close announcement"
+                    onClick={() => setSelectedAnnouncement(null)}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 text-xl text-slate-500 hover:bg-slate-100"
+                  >
+                    ×
+                  </button>
+                </div>
+                <p className="mt-5 whitespace-pre-wrap text-base leading-7 text-slate-700">
+                  {selectedAnnouncement.body}
+                </p>
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4 text-xs text-slate-500">
+                  <span>
+                    {selectedAnnouncement.author?.displayName || 'Church team'}
+                    {selectedAnnouncement.publishedAt
+                      ? ` · ${new Date(selectedAnnouncement.publishedAt).toLocaleString()}`
+                      : ''}
+                  </span>
+                  {selectedAnnouncement.expiresAt && (
+                    <span>Available until {new Date(selectedAnnouncement.expiresAt).toLocaleString()}</span>
+                  )}
+                </div>
+              </div>
+            </section>
+          </div>
+        )}
 
         <MemberQRCode user={user} open={qrOpen} onClose={() => setQrOpen(false)} showTrigger={false} />
         <OfferOnlineModal open={offerOnlineOpen} onClose={() => setOfferOnlineOpen(false)} />

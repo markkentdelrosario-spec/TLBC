@@ -61,6 +61,7 @@ export default function PastorDashboard({
     title: '',
     body: '',
     banner: null,
+    expiresAt: '',
   });
   const canViewReports = false;
 
@@ -260,10 +261,11 @@ export default function PastorDashboard({
           title: announcement.title.trim(),
           body: announcement.body.trim(),
           ...(announcement.banner ? { banner: announcement.banner } : {}),
+          ...(announcement.expiresAt ? { expiresAt: new Date(announcement.expiresAt).toISOString() } : {}),
           status: 'published',
         }),
       });
-      setAnnouncement({ title: '', body: '', banner: null });
+      setAnnouncement({ title: '', body: '', banner: null, expiresAt: '' });
       setNotice('Announcement published.');
     } catch (saveError) {
       setError(getErrorMessage(saveError));
@@ -711,6 +713,17 @@ export default function PastorDashboard({
                   </button>
                 </div>
               )}
+              <label className="block text-sm font-semibold text-slate-700">
+                Remove announcement after <span className="font-normal text-slate-400">(optional)</span>
+                <input
+                  type="datetime-local"
+                  className={inputClass}
+                  value={announcement.expiresAt}
+                  onChange={(event) =>
+                    setAnnouncement((value) => ({ ...value, expiresAt: event.target.value }))
+                  }
+                />
+              </label>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-xs text-slate-500">Published announcements are visible to signed-in users.</span>
                 <button className={buttonClass} disabled={savingAnnouncement}>

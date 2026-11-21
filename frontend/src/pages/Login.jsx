@@ -4,6 +4,7 @@ import { getRoleHomePath, useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiBaseUrl } from '../config/api';
 import { LOCAL_WELCOME_SLIDES } from '../utils/localSlideshow';
+import ImageUpload from '../components/shared/ImageUpload';
 
 const LOGIN_TAGLINE = 'YOUR FAITH JOURNEY STARTS HERE.';
 const LOGIN_TAGLINE_INTERVAL_MS = 55;
@@ -101,6 +102,8 @@ export default function Login() {
   const [registrationStep, setRegistrationStep] = useState('details');
   const [name, setName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState(null);
   const [email, setEmail] = useState(
     () => window.localStorage.getItem('tlbc-remembered-email') || ''
   );
@@ -259,6 +262,8 @@ export default function Login() {
         name: name.trim(),
         email: email.trim(),
         phoneNumber: phoneNumber.trim(),
+        ...(birthDate ? { birthDate } : {}),
+        ...(profilePhoto ? { profilePhoto } : {}),
         password,
       });
       setRegistrationStep('code');
@@ -539,6 +544,38 @@ export default function Login() {
                     placeholder="Your phone number"
                   />
                 </label>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Birthday <span className="font-normal text-slate-400">(optional)</span>
+                  <input
+                    type="date"
+                    autoComplete="bday"
+                    value={birthDate}
+                    onChange={(event) => setBirthDate(event.target.value)}
+                    className={inputClass}
+                  />
+                </label>
+                <div>
+                  <ImageUpload
+                    apiBaseUrl={apiBaseUrl}
+                    folder="profile-pictures"
+                    uploadPath="/upload/profile-picture"
+                    label="Profile photo (optional)"
+                    compact
+                    onUploaded={(image) =>
+                      setProfilePhoto({
+                        url: image.secure_url,
+                        publicId: image.public_id,
+                      })
+                    }
+                  />
+                  {profilePhoto && (
+                    <img
+                      src={profilePhoto.url}
+                      alt="Selected profile"
+                      className="mt-2 h-20 w-20 rounded-full border border-slate-200 object-cover"
+                    />
+                  )}
+                </div>
                 <label className="block text-xs font-semibold text-slate-700">
                   Password
                   <input

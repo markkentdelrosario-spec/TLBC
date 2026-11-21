@@ -40,9 +40,18 @@ router.get('/', authenticate, async (req, res, next) => {
     return res.status(400).json({ message: 'search must be 100 characters or fewer.' });
   }
   const filter = { status: 'published' };
+  filter.$and = [
+    {
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $exists: false } },
+        { expiresAt: { $gt: new Date() } },
+      ],
+    },
+  ];
   if (search) {
     const pattern = new RegExp(escapeRegex(search), 'i');
-    filter.$or = [{ title: pattern }, { body: pattern }];
+    filter.$and.push({ $or: [{ title: pattern }, { body: pattern }] });
   }
 
   try {
@@ -61,6 +70,7 @@ router.get('/', authenticate, async (req, res, next) => {
             author: 1,
             status: 1,
             publishedAt: 1,
+            expiresAt: 1,
             createdAt: 1,
             reactions: 1,
             commentCount: {
@@ -272,6 +282,10 @@ router.post(
     const status = body.status || 'published';
     const banner = body.banner;
     const images = body.images;
+    const expiresAt =
+      typeof body.expiresAt === 'string' && body.expiresAt.trim()
+        ? new Date(body.expiresAt)
+        : null;
 
     if (!title || title.length > 160) {
       return res.status(400).json({
@@ -286,6 +300,11 @@ router.post(
     if (!['draft', 'published'].includes(status)) {
       return res.status(400).json({
         message: 'status must be draft or published.',
+      });
+    }
+    if (expiresAt !== null && (Number.isNaN(expiresAt.getTime()) || expiresAt <= new Date())) {
+      return res.status(400).json({
+        message: 'expiresAt must be a valid future date and time.',
       });
     }
     if (
@@ -317,6 +336,7 @@ router.post(
         author: req.user._id,
         status,
         publishedAt: status === 'published' ? new Date() : null,
+        expiresAt,
       });
       if (status === 'published') {
         await notifyAnnouncementPublished(announcement);
