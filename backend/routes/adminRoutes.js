@@ -11,6 +11,7 @@ const LifeCoachGroup = require('../models/LifeCoachGroup');
 const User = require('../models/User');
 const { createBrevoClient, sendRegistrationOtp } = require('../services/email');
 const { ensureDesignationTeamMemberships } = require('../services/designationTeams');
+const { emitToUser } = require('../realtime/realtime');
 const {
   SECONDARY_DESIGNATIONS,
   getDesignations,
@@ -439,6 +440,7 @@ router.patch(
       )
         .select('_id displayName email role secondaryDesignations profilePicture profilePhoto phoneNumber birthDate');
       await ensureDesignationTeamMemberships(user);
+      emitToUser(user._id, 'profile:updated');
       return res.json({
         message: 'Secondary designation updated.',
         user: {

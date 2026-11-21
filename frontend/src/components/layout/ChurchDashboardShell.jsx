@@ -585,6 +585,9 @@ export default function ChurchDashboardShell({
           announcementPageRef.current = 1;
           loadAnnouncements(1).catch((error) => setActionError(getErrorMessage(error)));
         });
+        socket.on('profile:updated', () => {
+          refreshProfile().catch((error) => setActionError(getErrorMessage(error)));
+        });
         socket.on('announcement:deleted', ({ announcementId }) => {
           setAnnouncements((items) =>
             items.filter(
@@ -736,6 +739,7 @@ export default function ChurchDashboardShell({
     loadBirthdays,
     loadSpecialEvents,
     isLifeCoach,
+    refreshProfile,
     user?._id,
     user?.role,
   ]);
@@ -947,6 +951,7 @@ export default function ChurchDashboardShell({
     user?.role === 'member' && getDesignations(user).length > 0;
   const canAddGroupMembers =
     user?.role === 'member' && hasLeadershipDesignation(user);
+  const canScanMemberQr = isLifeCoach;
   const canViewReports =
     user?.role === 'admin';
   const canViewLeaderboard = ['admin', 'member'].includes(user?.role);
@@ -1573,9 +1578,8 @@ export default function ChurchDashboardShell({
     }
   }
 
-  async function deleteAnnouncement(id, title) {
+  async function deleteAnnouncement(id) {
     if (user?.role !== 'admin') return;
-    if (!window.confirm(`Delete “${title}”? This cannot be undone.`)) return;
 
     setDeletingAnnouncementId(id);
     try {
@@ -1595,6 +1599,16 @@ export default function ChurchDashboardShell({
     } finally {
       setDeletingAnnouncementId('');
     }
+  }
+
+  function requestAnnouncementDeletion(id, title) {
+    if (user?.role !== 'admin') return;
+    setConfirmation({
+      title: `Delete “${title}”?`,
+      message: 'This announcement will be permanently deleted and cannot be restored.',
+      confirmText: 'Delete announcement',
+      onConfirm: () => deleteAnnouncement(id),
+    });
   }
 
   const profileCompletionFields = [
@@ -1672,7 +1686,7 @@ export default function ChurchDashboardShell({
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
               />
             </label>
-            {canAddGroupMembers && (
+            {canScanMemberQr && (
               <Link
                 to="/scanner"
                 aria-label="Open QR attendance scanner"
@@ -2191,7 +2205,7 @@ export default function ChurchDashboardShell({
                                 disabled={deletingAnnouncementId === id}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  deleteAnnouncement(id, announcement.title);
+                                  requestAnnouncementDeletion(id, announcement.title);
                                 }}
                                 className="min-h-8 rounded-lg border border-rose-200 px-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
                               >
