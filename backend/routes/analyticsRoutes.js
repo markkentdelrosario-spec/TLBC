@@ -12,7 +12,7 @@ const User = require('../models/User');
 const {
   buildAttendanceDateMatch,
   getAttendanceTimeZone,
-  getChurchAttendanceDate,
+  getDefaultSundayAttendanceStatus,
 } = require('../utils/attendanceDate');
 const { getDesignations } = require('../utils/designations');
 
@@ -272,7 +272,7 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
 
     const rows = [];
     const sundayDates = [];
-    const today = getChurchAttendanceDate();
+    const now = new Date();
     for (
       let date = new Date(monthRange.start);
       date < monthRange.end;
@@ -282,14 +282,14 @@ router.get('/monthly-sundays', ...reportAccess, async (req, res, next) => {
       const dateString = date.toISOString().slice(0, 10);
       sundayDates.push(dateString);
       const statuses = statusesByDateAndMember.get(dateString) || new Map();
+      const defaultStatus = getDefaultSundayAttendanceStatus(date, now);
       for (const member of members) {
         rows.push({
           date: dateString,
           memberId: String(member._id),
           memberName: member.displayName,
           secondaryDesignation: getDesignations(member).join(', '),
-          status: statuses.get(String(member._id)) ||
-            (date > today ? 'upcoming' : 'absent'),
+          status: statuses.get(String(member._id)) || defaultStatus,
         });
       }
     }

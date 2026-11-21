@@ -53,6 +53,21 @@ function hasAttendanceCutoffPassed(date = new Date()) {
   return getChurchAttendanceClock(date).minutes >= ATTENDANCE_CUTOFF_MINUTES;
 }
 
+function getDefaultSundayAttendanceStatus(attendanceDate, now = new Date()) {
+  const today = getChurchAttendanceDate(now);
+  if (attendanceDate > today) return 'upcoming';
+
+  const { weekday, minutes } = getChurchAttendanceClock(now);
+  if (
+    attendanceDate.getTime() === today.getTime() &&
+    weekday === 'Sun' &&
+    minutes < ATTENDANCE_CUTOFF_MINUTES
+  ) {
+    return 'upcoming';
+  }
+  return 'absent';
+}
+
 function getChurchAttendanceSundayDate(date = new Date()) {
   const sunday = getChurchAttendanceDate(date);
   sunday.setUTCDate(sunday.getUTCDate() - sunday.getUTCDay());
@@ -96,5 +111,6 @@ module.exports = {
   getChurchAttendanceClock,
   getChurchAttendanceSundayDate,
   hasAttendanceCutoffPassed,
+  getDefaultSundayAttendanceStatus,
   parseChurchCalendarDate,
 };

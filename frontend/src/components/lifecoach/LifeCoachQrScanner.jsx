@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Link } from 'react-router-dom';
+import { io } from 'socket.io-client';
 import { apiRequest, getErrorMessage } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import PaginationControls from '../shared/PaginationControls';
@@ -59,6 +60,7 @@ export default function LifeCoachQrScanner({
   const [groupSummary, setGroupSummary] = useState(null);
   const [groupSummaryLoading, setGroupSummaryLoading] = useState(true);
   const [groupSummaryPage, setGroupSummaryPage] = useState(1);
+  const [qrScanPage, setQrScanPage] = useState(1);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -89,6 +91,40 @@ export default function LifeCoachQrScanner({
       active = false;
     };
   }, [loadGroupSummary]);
+
+  useEffect(() => {
+    let active = true;
+    let socket;
+    getIdToken()
+      .then((token) => {
+        if (!active) return;
+        const configuredUrl = import.meta.env.VITE_SOCKET_URL;
+        const socketUrl = configuredUrl
+          ? configuredUrl
+          : apiBaseUrl.startsWith('http')
+            ? new URL(apiBaseUrl).origin
+            : window.location.origin;
+        socket = io(socketUrl, {
+          auth: { token },
+          transports: ['websocket', 'polling'],
+        });
+        socket.on('attendance:recorded', () => {
+          loadGroupSummary().catch((summaryError) => {
+            if (active) setError(getErrorMessage(summaryError));
+          });
+        });
+        socket.on('connect_error', (connectError) => {
+          console.error('Unable to receive live attendance updates.', connectError.message);
+        });
+      })
+      .catch((tokenError) => {
+        if (active) console.error('Unable to authenticate attendance updates.', tokenError);
+      });
+    return () => {
+      active = false;
+      socket?.disconnect();
+    };
+  }, [apiBaseUrl, getIdToken, loadGroupSummary]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -327,6 +363,69 @@ export default function LifeCoachQrScanner({
               </div>
             </div>
           )}
+          <div className="mt-5 border-t border-slate-200 pt-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold">All successful QR scans</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Includes active QR ID holders scanned by any Life Coach.
+                </p>
+              </div>
+              <p className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-700">
+                {groupSummary?.qrScans?.length || 0} checked in
+              </p>
+            </div>
+            {groupSummaryLoading ? (
+              <p role="status" className="py-5 text-center text-sm text-slate-500">
+                Loading QR check-ins…
+              </p>
+            ) : groupSummary?.qrScans?.length ? (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full min-w-[38rem] text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th scope="col" className="px-3 py-3 font-semibold">Member</th>
+                      <th scope="col" className="px-3 py-3 font-semibold">Group</th>
+                      <th scope="col" className="px-3 py-3 font-semibold">Check-in</th>
+                      <th scope="col" className="px-3 py-3 font-semibold">Scanned by</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {groupSummary.qrScans
+                      .slice((qrScanPage - 1) * 10, qrScanPage * 10)
+                      .map((scan) => (
+                        <tr key={scan.userId}>
+                          <th scope="row" className="px-3 py-3 font-medium">{scan.name}</th>
+                          <td className="px-3 py-3 text-slate-600">{scan.groupName || 'Unassigned'}</td>
+                          <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">
+                            {scan.checkedInAt
+                              ? new Date(scan.checkedInAt).toLocaleTimeString([], {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                timeZone: CHURCH_TIME_ZONE,
+                              })
+                              : '—'}
+                          </td>
+                          <td className="px-3 py-3 text-slate-600">{scan.scannedBy || 'Unknown'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                <div className="px-3">
+                  <PaginationControls
+                    page={qrScanPage}
+                    totalPages={Math.ceil(groupSummary.qrScans.length / 10)}
+                    onPageChange={setQrScanPage}
+                    label="All Sunday QR check-in pages"
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-5 text-center text-sm text-slate-500">
+                No successful QR scans have been recorded for this Sunday yet.
+              </p>
+            )}
+          </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">

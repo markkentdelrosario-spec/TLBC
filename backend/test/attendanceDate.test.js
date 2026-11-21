@@ -10,6 +10,7 @@ const {
   getChurchAttendanceSundayDate,
   isChurchAttendanceSunday,
   hasAttendanceCutoffPassed,
+  getDefaultSundayAttendanceStatus,
 } = require('../utils/attendanceDate');
 
 test('attendance status uses Philippine local time boundaries', () => {
@@ -32,4 +33,32 @@ test('Sunday check-in eligibility follows Philippine local midnight', () => {
   assert.equal(isChurchAttendanceSunday(new Date('2026-11-07T15:59:59.000Z')), false);
   assert.equal(isChurchAttendanceSunday(new Date('2026-11-07T16:00:00.000Z')), true);
   assert.equal(isChurchAttendanceSunday(new Date('2026-11-08T16:00:00.000Z')), false);
+});
+
+test('monthly Sunday defaults do not mark the current service absent before 11 AM PHT', () => {
+  const sunday = new Date('2026-11-08T00:00:00.000Z');
+  assert.equal(
+    getDefaultSundayAttendanceStatus(sunday, new Date('2026-11-07T16:30:00.000Z')),
+    'upcoming'
+  );
+  assert.equal(
+    getDefaultSundayAttendanceStatus(sunday, new Date('2026-11-08T02:59:00.000Z')),
+    'upcoming'
+  );
+  assert.equal(
+    getDefaultSundayAttendanceStatus(sunday, new Date('2026-11-08T03:00:00.000Z')),
+    'absent'
+  );
+});
+
+test('monthly Sunday defaults keep past Sundays absent and future Sundays upcoming', () => {
+  const now = new Date('2026-11-07T16:30:00.000Z');
+  assert.equal(
+    getDefaultSundayAttendanceStatus(new Date('2026-11-01T00:00:00.000Z'), now),
+    'absent'
+  );
+  assert.equal(
+    getDefaultSundayAttendanceStatus(new Date('2026-11-15T00:00:00.000Z'), now),
+    'upcoming'
+  );
 });

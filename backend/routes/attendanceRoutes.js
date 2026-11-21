@@ -80,16 +80,54 @@ router.get('/group-summary', ...canCheckIn, async (req, res, next) => {
   }
 
   try {
-    const memberProfile = await findMemberProfile(req.user);
+    const today = getChurchAttendanceSundayDate();
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const [memberProfile, qrScanLogs] = await Promise.all([
+      findMemberProfile(req.user),
+      AttendanceLog.find({
+        attendanceDate: { $gte: today, $lt: tomorrow },
+        method: 'qr',
+        status: { $in: ['present', 'late'] },
+      })
+        .populate('user', 'displayName isActive')
+        .populate('group', 'name')
+        .populate('scannedBy', 'displayName')
+        .populate({
+          path: 'beneficiary',
+          select: 'user group',
+          populate: [
+            { path: 'user', select: 'displayName isActive' },
+            { path: 'group', select: 'name' },
+          ],
+        })
+        .sort({ checkedInAt: -1 })
+        .lean(),
+    ]);
+    const qrScans = qrScanLogs
+      .map((log) => {
+        const user = log.user || log.beneficiary?.user;
+        if (!user?.isActive) return null;
+        return {
+          userId: user._id,
+          name: user.displayName || 'Unnamed member',
+          groupName: log.group?.name || log.beneficiary?.group?.name || null,
+          status: log.status,
+          checkedInAt: log.checkedInAt,
+          scannedBy: log.scannedBy?.displayName || null,
+        };
+      })
+      .filter(Boolean);
+
     const memberGroup = memberProfile?.group;
     if (req.user.role === 'member' && !memberGroup) {
       return res.json({
-        date: getChurchAttendanceSundayDate().toISOString().slice(0, 10),
+        date: today.toISOString().slice(0, 10),
         group: null,
         beneficiaryCount: 0,
         attendanceCount: 0,
         members: [],
         attendance: [],
+        qrScans,
       });
     }
     if (
@@ -118,8 +156,6 @@ router.get('/group-summary', ...canCheckIn, async (req, res, next) => {
       return res.status(404).json({ message: 'Active group not found.' });
     }
 
-    const today = getChurchAttendanceSundayDate();
-    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const roster = await Beneficiary.find({ group: group._id, isActive: true })
       .populate('user', 'displayName email phoneNumber isActive secondaryDesignations')
       .sort({ createdAt: 1 })
@@ -180,6 +216,7 @@ router.get('/group-summary', ...canCheckIn, async (req, res, next) => {
       beneficiaryCount: activeRoster.length,
       attendanceCount: checkedInCount,
       members,
+      qrScans,
       attendance: attendance.map((log) => ({
         id: log._id,
         beneficiaryName:
@@ -444,7 +481,7 @@ router.post('/check-in', ...canCheckIn, async (req, res, next) => {
     };
     if (beneficiary) duplicateQuery.$or.push({ beneficiary: beneficiary._id });
     const existingAttendance = await AttendanceLog.findOne(duplicateQuery);
-    const isQrScan = Boolean(qrToken || userId);
+    const isQrScan = Boolean(qrToken);
     if (existingAttendance && (!isQrScan || existingAttendance.method === 'qr')) {
       return res.status(409).json({
         message: 'Attendance has already been recorded for this user, date, and service.',
