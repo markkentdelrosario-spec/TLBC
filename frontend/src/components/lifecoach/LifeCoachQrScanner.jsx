@@ -48,7 +48,8 @@ export default function LifeCoachQrScanner({
   const busyRef = useRef(false);
   const mountedRef = useRef(true);
   const [scannerState, setScannerState] = useState('idle');
-  const [isSunday, setIsSunday] = useState(isChurchSunday);
+  const [churchDateKey, setChurchDateKey] = useState(getChurchDateKey);
+  const isSunday = isChurchSundayDateKey(churchDateKey);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -64,7 +65,7 @@ export default function LifeCoachQrScanner({
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setIsSunday(isChurchSunday());
+      setChurchDateKey(getChurchDateKey());
     }, 30 * 1000);
     return () => window.clearInterval(timer);
   }, []);
@@ -90,7 +91,10 @@ export default function LifeCoachQrScanner({
     return () => {
       active = false;
     };
-  }, [loadGroupSummary]);
+  }, [churchDateKey, loadGroupSummary]);
+
+  const showCurrentSundaySummary =
+    isSunday && (!groupSummary || groupSummary.date === churchDateKey);
 
   useEffect(() => {
     let active = true;
@@ -302,7 +306,7 @@ export default function LifeCoachQrScanner({
           </div>
         )}
 
-        <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        {showCurrentSundaySummary && <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-500">
@@ -426,7 +430,7 @@ export default function LifeCoachQrScanner({
               </p>
             )}
           </div>
-        </section>
+        </section>}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
