@@ -141,6 +141,7 @@ export default function AttendanceReportsPanel({ getIdToken, apiBaseUrl }) {
           { label: 'Late', value: statuses.filter((status) => status === 'late').length },
           { label: 'Absent', value: statuses.filter((status) => status === 'absent').length },
         ],
+        groupByDate: reportType === 'monthly',
       },
     });
   }

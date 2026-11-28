@@ -93,6 +93,31 @@ function buildColumnWidths(headers, rows, tableWidth) {
   return weights.map((weight) => (tableWidth * weight) / totalWeight);
 }
 
+function formatPdfDate(value) {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function groupRowsByDate(rows) {
+  const groupedRows = new Map();
+  rows.forEach((row) => {
+    const dateGroup = String(row[0] ?? '');
+    if (!groupedRows.has(dateGroup)) groupedRows.set(dateGroup, []);
+    groupedRows.get(dateGroup).push(row.slice(1));
+  });
+  return [...groupedRows.entries()]
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .flatMap(([dateGroup, cells]) =>
+      cells.map((rowCells) => ({ dateGroup, cells: rowCells }))
+    );
+}
+
 function buildPageContent({
   pageRows,
   pageIndex,
@@ -104,6 +129,7 @@ function buildPageContent({
   headers,
   columnWidths,
   tableWidth,
+  dateGrouped,
 }) {
   const commands = [];
   const logoSize = 48;
@@ -145,13 +171,26 @@ function buildPageContent({
   headers.forEach((header, index) => {
     const cellLines = wrapText(header, Math.max(8, Math.floor((columnWidths[index] - 12) / 4.3)));
     text(cellLines[0], x + 6, y - 15, FONT_SIZE, 'F2', '1 1 1');
+    if (index > 0) {
+      commands.push(`0.55 0.62 0.68 RG 0.45 w ${x} ${y} m ${x} ${y - headerHeight} l S`);
+    }
     x += columnWidths[index];
   });
   y -= headerHeight;
 
   pageRows.forEach((row, rowIndex) => {
+    const dateGroup = dateGrouped ? row.dateGroup : '';
+    const cells = dateGrouped ? row.cells : row;
+    if (dateGrouped && (!rowIndex || pageRows[rowIndex - 1].dateGroup !== dateGroup)) {
+      const groupHeight = 19;
+      const groupBottom = y - groupHeight;
+      commands.push(`0.88 0.91 0.95 rg ${PAGE_MARGIN} ${groupBottom} ${tableWidth} ${groupHeight} re f`);
+      text(formatPdfDate(dateGroup), PAGE_MARGIN + 7, y - 13, FONT_SIZE, 'F2', '0.12 0.17 0.24');
+      commands.push(`0.78 0.81 0.84 RG 0.45 w ${PAGE_MARGIN} ${groupBottom} m ${PAGE_MARGIN + tableWidth} ${groupBottom} l S`);
+      y = groupBottom;
+    }
     const cellLines = headers.map((_, columnIndex) =>
-      wrapText(row[columnIndex], Math.max(7, Math.floor((columnWidths[columnIndex] - 12) / (FONT_SIZE * 0.52))))
+      wrapText(cells[columnIndex], Math.max(7, Math.floor((columnWidths[columnIndex] - 12) / (FONT_SIZE * 0.52))))
     );
     const lineCount = Math.max(1, ...cellLines.map((lines) => lines.length));
     const rowHeight = lineCount * 10 + ROW_PADDING;
@@ -166,6 +205,9 @@ function buildPageContent({
         text(line, cellX + 6, y - ROW_PADDING - 8 - (lineIndex * 10), FONT_SIZE);
       });
       cellX += columnWidths[columnIndex];
+      if (columnIndex < cellLines.length - 1) {
+        commands.push(`0.82 0.85 0.88 RG 0.45 w ${cellX} ${y} m ${cellX} ${bottom} l S`);
+      }
     });
     y = bottom;
   });
@@ -186,10 +228,19 @@ export async function createReportPdf(title, rows, metadata = {}) {
   }
   const logoBytes = new Uint8Array(await logoResponse.arrayBuffer());
   const { width: logoWidth, height: logoHeight } = findJpegDimensions(logoBytes);
-  const tableRows = rows.length > 1 ? rows.slice(1) : [];
-  const headers = rows[0] || [];
+  const sourceRows = rows.length > 1 ? rows.slice(1) : [];
+  const sourceHeaders = rows[0] || [];
+  const dateGrouped = Boolean(metadata.groupByDate && sourceHeaders[0] === 'Date');
+  const headers = dateGrouped ? sourceHeaders.slice(1) : sourceHeaders;
+  const tableRows = dateGrouped
+    ? groupRowsByDate(sourceRows)
+    : sourceRows;
   const tableWidth = PDF_WIDTH - (PAGE_MARGIN * 2);
-  const columnWidths = buildColumnWidths(headers, tableRows, tableWidth);
+  const columnWidths = buildColumnWidths(
+    headers,
+    dateGrouped ? tableRows.map((row) => row.cells) : tableRows,
+    tableWidth
+  );
   const generatedAt = new Date().toLocaleString(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short',
@@ -201,23 +252,33 @@ export async function createReportPdf(title, rows, metadata = {}) {
   const firstPageTop = PDF_HEIGHT - (summary.length ? 153 : 112);
   const firstPageAvailable = firstPageTop - PAGE_MARGIN - 24;
   const otherPageAvailable = PDF_HEIGHT - 112 - PAGE_MARGIN - 24;
-  const estimatedRowHeights = tableRows.map((row) => {
+  const estimatedRowHeights = tableRows.map((row, index) => {
+    const cells = dateGrouped ? row.cells : row;
     const lineCount = Math.max(
       1,
       ...headers.map((_, columnIndex) =>
-        wrapText(row[columnIndex], Math.max(7, Math.floor((columnWidths[columnIndex] - 12) / (FONT_SIZE * 0.52)))).length
+        wrapText(cells[columnIndex], Math.max(7, Math.floor((columnWidths[columnIndex] - 12) / (FONT_SIZE * 0.52)))).length
       )
     );
-    return lineCount * 10 + ROW_PADDING;
+    const groupChanged = dateGrouped &&
+      (!index || tableRows[index - 1].dateGroup !== row.dateGroup);
+    return lineCount * 10 + ROW_PADDING + (groupChanged ? 19 : 0);
   });
 
   const pageRowGroups = [[]];
   let remainingHeight = firstPageAvailable;
   tableRows.forEach((row, index) => {
-    const rowHeight = estimatedRowHeights[index];
+    let rowHeight = estimatedRowHeights[index];
     if (pageRowGroups[pageRowGroups.length - 1].length && rowHeight > remainingHeight) {
       pageRowGroups.push([]);
       remainingHeight = otherPageAvailable;
+      if (
+        dateGrouped &&
+        index > 0 &&
+        tableRows[index - 1].dateGroup === row.dateGroup
+      ) {
+        rowHeight += 19;
+      }
     }
     pageRowGroups[pageRowGroups.length - 1].push(row);
     remainingHeight -= rowHeight;
@@ -251,6 +312,7 @@ export async function createReportPdf(title, rows, metadata = {}) {
       headers,
       columnWidths,
       tableWidth,
+      dateGrouped,
     });
     objects[pageId] = encode(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_WIDTH} ${PDF_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R >> >> /Contents ${contentId} 0 R >>`

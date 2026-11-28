@@ -25,6 +25,7 @@ import AttendanceMonitoringPanel from '../attendance/AttendanceMonitoringPanel';
 import OfferOnlineModal from '../shared/OfferOnlineModal';
 import PaginationControls from '../shared/PaginationControls';
 import ConnectionStatusBanner from '../shared/ConnectionStatusBanner';
+import AttendanceLeaderboardModal from '../attendance/AttendanceLeaderboardModal';
 
 const NOTIFICATION_RETENTION_MS = 24 * 60 * 60 * 1000;
 
@@ -257,6 +258,7 @@ export default function ChurchDashboardShell({
   const [pushError, setPushError] = useState('');
   const [analytics, setAnalytics] = useState(null);
   const [attendanceLeaderboard, setAttendanceLeaderboard] = useState([]);
+  const [showAttendanceLeaderboard, setShowAttendanceLeaderboard] = useState(false);
   const [verse, setVerse] = useState(null);
   const [verseError, setVerseError] = useState('');
   const [readerReference, setReaderReference] = useState('');
@@ -2017,10 +2019,11 @@ export default function ChurchDashboardShell({
           </div>
 
           {canViewLeaderboard && (
-            <Link
-              to="/leaderboards"
+            <button
+              type="button"
+              onClick={() => setShowAttendanceLeaderboard(true)}
               aria-label="View full attendance leaderboard"
-              className="mb-6 block rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-violet-300 dark:border-slate-700 dark:bg-slate-900 xl:hidden"
+              className="mb-6 block w-full rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-violet-300 dark:border-slate-700 dark:bg-slate-900 xl:hidden"
             >
               <span className="flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Attendance leaderboard</span>
@@ -2047,7 +2050,7 @@ export default function ChurchDashboardShell({
                   No ranked members yet. Open the full leaderboard for details.
                 </span>
               )}
-            </Link>
+            </button>
           )}
 
           <section id="birthday-celebrants" className="mb-6 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
@@ -2144,7 +2147,8 @@ export default function ChurchDashboardShell({
                   return (
                     <article
                       key={id}
-                      onClick={() => {
+                      onClick={(event) => {
+                        if (event.target.closest('button, input, textarea, form, a')) return;
                         setSelectedAnnouncement(announcement);
                         setSelectedAnnouncementImageIndex(0);
                       }}
@@ -2270,6 +2274,7 @@ export default function ChurchDashboardShell({
                         )}
                         <form
                           className="mt-3 flex gap-2"
+                          onClick={(event) => event.stopPropagation()}
                           onSubmit={(event) => {
                             event.preventDefault();
                             addComment('announcement', id);
@@ -3099,6 +3104,12 @@ export default function ChurchDashboardShell({
         )}
 
         <MemberQRCode user={user} open={qrOpen} onClose={() => setQrOpen(false)} showTrigger={false} />
+        <AttendanceLeaderboardModal
+          open={showAttendanceLeaderboard}
+          onClose={() => setShowAttendanceLeaderboard(false)}
+          getIdToken={getIdToken}
+          apiBaseUrl={apiBaseUrl}
+        />
         <OfferOnlineModal open={offerOnlineOpen} onClose={() => setOfferOnlineOpen(false)} />
         <ConfirmationModal
           open={Boolean(confirmation)}
@@ -3297,10 +3308,11 @@ export default function ChurchDashboardShell({
           </section>
 
           {canViewLeaderboard ? (
-            <Link
-              to="/leaderboards"
+            <button
+              type="button"
+              onClick={() => setShowAttendanceLeaderboard(true)}
               aria-label="View full attendance leaderboard"
-              className="block rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-violet-300 dark:border-slate-700 dark:bg-slate-900"
+              className="block w-full rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-violet-300 dark:border-slate-700 dark:bg-slate-900"
             >
               <span className="flex items-center justify-between">
                 <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Attendance leaderboard</span>
@@ -3337,7 +3349,7 @@ export default function ChurchDashboardShell({
                 )}
               </span>
               <span className="mt-2 block text-center text-[10px] text-slate-400">Present attendances · Top 3</span>
-            </Link>
+            </button>
           ) : null}
 
           <VerseOfDayCard
